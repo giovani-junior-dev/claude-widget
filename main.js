@@ -17,6 +17,9 @@ const kimiCreds = require('./lib/kimi-creds')
 const kimiOauth = require('./lib/kimi-oauth')
 const { fetchKimiUsage } = require('./lib/kimi-usage')
 const { toKimiViewModel } = require('./lib/kimi-view-model')
+const grokCreds = require('./lib/grok-creds')
+const { fetchGrokUsage } = require('./lib/grok-usage')
+const { toGrokViewModel } = require('./lib/grok-view-model')
 const windowState = require('./lib/window-state')
 const autostart = require('./lib/autostart')
 const tokenUsage = require('./lib/token-usage')
@@ -81,9 +84,23 @@ const kimiRuntime = {
 }
 let kimiPollTimer = null
 
+const grokRuntime = {
+  raw: null,
+  vm: null,
+  at: null,
+  status: 'loading',
+  message: null,
+  stale: false,
+  plan: null,
+  backoff: POLL_BASE_MS,
+  available: true // vira false so quando o Grok Build nunca logou nesta maquina
+}
+let grokPollTimer = null
+
 function activeRuntime () {
   if (state.source === 'codex') return codexRuntime
   if (state.source === 'kimi') return kimiRuntime
+  if (state.source === 'grok') return grokRuntime
   return runtime
 }
 
@@ -150,6 +167,25 @@ function loadKimiCache () {
       kimiRuntime.at = c.at
       kimiRuntime.plan = c.plan
       kimiRuntime.stale = true
+    }
+  } catch { /* primeira execucao */ }
+}
+
+function saveGrokCache () {
+  if (!grokRuntime.vm) return
+  try {
+    fs.mkdirSync(app.getPath('userData'), { recursive: true })
+    fs.writeFileSync(cacheFile('last-grok-usage.json'), JSON.stringify({ vm: grokRuntime.vm, at: grokRuntime.at }))
+  } catch { /* cache e conveniencia, nao requisito */ }
+}
+
+function loadGrokCache () {
+  try {
+    const c = JSON.parse(fs.readFileSync(cacheFile('last-grok-usage.json'), 'utf8'))
+    if (c && c.vm) {
+      grokRuntime.vm = c.vm
+      grokRuntime.at = c.at
+      grokRuntime.stale = true
     }
   } catch { /* primeira execucao */ }
 }
@@ -354,6 +390,67 @@ function scheduleKimi () {
   kimiPollTimer = setTimeout(refreshKimi, kimiRuntime.backoff)
 }
 
+// ---------------------------------------------------------------- grok
+
+async function refreshGrok () {
+  let creds
+  try {
+    creds = grokCreds.readCreds()
+  } catch (err) {
+    if (err.code === 'NO_FILE') {
+      // Grok Build nunca logou nesta maquina: nada pra mostrar, para de bater no disco.
+      grokRuntime.available = false
+      if (state.source === 'grok') {
+        state = { ...state, source: 'claude' }
+        windowState.save(app, state)
+      }
+      push()
+      return
+    }
+    return failGrok('error', err.message)
+  }
+
+  // So leitura: o Grok Build renova o proprio token sozinho na proxima vez que
+  // rodar. Igual ao Codex, nunca regravamos nada no auth.json de outra ferramenta.
+  if (creds.expired) return failGrok('expired', null)
+
+  try {
+    const raw = await fetchGrokUsage(creds.token, creds.userId)
+    grokRuntime.raw = raw
+    grokRuntime.at = Date.now()
+    grokRuntime.vm = toGrokViewModel(raw, grokRuntime.at)
+    grokRuntime.status = 'ok'
+    grokRuntime.message = null
+    grokRuntime.stale = false
+    grokRuntime.backoff = nextBackoff(grokRuntime.backoff, true)
+    saveGrokCache()
+  } catch (err) {
+    const code = err instanceof UsageError ? err.code : 'HTTP_ERROR'
+    if (code === 'TOKEN_EXPIRED') return failGrok('expired', null)
+    if (code === 'OFFLINE' || code === 'TIMEOUT') return failGrok('offline', null)
+    return failGrok('error', err.message)
+  }
+
+  push()
+  scheduleGrok()
+}
+
+function failGrok (status, message) {
+  grokRuntime.status = status
+  grokRuntime.message = message
+  grokRuntime.stale = true
+  grokRuntime.backoff = nextBackoff(grokRuntime.backoff, false)
+  push()
+  scheduleGrok()
+}
+
+function scheduleGrok () {
+  clearTimeout(grokPollTimer)
+  if (!grokRuntime.available) return
+  if (win && !win.isVisible() && grokRuntime.status === 'ok') return
+  grokPollTimer = setTimeout(refreshGrok, grokRuntime.backoff)
+}
+
 function push () {
   if (win && !win.isDestroyed()) {
     const r = activeRuntime()
@@ -361,6 +458,7 @@ function push () {
       source: state.source,
       codexAvailable: codexRuntime.available,
       kimiAvailable: kimiRuntime.available,
+      grokAvailable: grokRuntime.available,
       vm: r.vm,
       status: r.status,
       message: r.message,
@@ -391,6 +489,9 @@ function tick () {
   }
   if (kimiRuntime.status === 'ok' && kimiRuntime.raw) {
     kimiRuntime.vm = toKimiViewModel(kimiRuntime.raw, Date.now())
+  }
+  if (grokRuntime.status === 'ok' && grokRuntime.raw) {
+    grokRuntime.vm = toGrokViewModel(grokRuntime.raw, Date.now())
   }
   if (state.tokensOpen && !state.compact && state.source === 'claude') refreshTokens()
   push()
@@ -429,7 +530,7 @@ function trayIcon (severity) {
   return img.isEmpty() ? nativeImage.createEmpty() : img
 }
 
-const SOURCE_LABEL = { claude: 'Claude', codex: 'Codex', kimi: 'Kimi' }
+const SOURCE_LABEL = { claude: 'Claude', codex: 'Codex', kimi: 'Kimi', grok: 'Grok' }
 
 function trayTooltip () {
   const r = activeRuntime()
@@ -456,6 +557,10 @@ function combinedSeverity () {
   }
   if (kimiRuntime.available) {
     if (kimiRuntime.status === 'ok' && kimiRuntime.vm) sevs.push(worstSeverity(kimiRuntime.vm))
+    else sevs.push('warn')
+  }
+  if (grokRuntime.available) {
+    if (grokRuntime.status === 'ok' && grokRuntime.vm) sevs.push(worstSeverity(grokRuntime.vm))
     else sevs.push('warn')
   }
   if (sevs.includes('crit')) return 'crit'
@@ -490,6 +595,7 @@ function buildMenu () {
         runtime.backoff = POLL_BASE_MS; refresh()
         if (codexRuntime.available) { codexRuntime.backoff = POLL_BASE_MS; refreshCodex() }
         if (kimiRuntime.available) { kimiRuntime.backoff = POLL_BASE_MS; refreshKimi() }
+        if (grokRuntime.available) { grokRuntime.backoff = POLL_BASE_MS; refreshGrok() }
       }
     },
     { type: 'separator' },
@@ -521,6 +627,10 @@ function toggleWindow () {
     if (kimiRuntime.available) {
       if (kimiRuntime.status !== 'ok' || Date.now() - (kimiRuntime.at || 0) > POLL_BASE_MS) refreshKimi()
       else scheduleKimi()
+    }
+    if (grokRuntime.available) {
+      if (grokRuntime.status !== 'ok' || Date.now() - (grokRuntime.at || 0) > POLL_BASE_MS) refreshGrok()
+      else scheduleGrok()
     }
   }
   updateTray()
@@ -585,8 +695,8 @@ function createWindow () {
 
 // ---------------------------------------------------------------- ipc
 
-const SOURCE_RUNTIME = { claude: () => runtime, codex: () => codexRuntime, kimi: () => kimiRuntime }
-const SOURCE_REFRESH = { claude: () => refresh(), codex: () => refreshCodex(), kimi: () => refreshKimi() }
+const SOURCE_RUNTIME = { claude: () => runtime, codex: () => codexRuntime, kimi: () => kimiRuntime, grok: () => grokRuntime }
+const SOURCE_REFRESH = { claude: () => refresh(), codex: () => refreshCodex(), kimi: () => refreshKimi(), grok: () => refreshGrok() }
 
 ipcMain.on('refresh', () => {
   const r = SOURCE_RUNTIME[state.source]()
@@ -661,6 +771,7 @@ if (!app.requestSingleInstanceLock()) {
     loadCache()
     loadCodexCache()
     loadKimiCache()
+    loadGrokCache()
     createWindow()
 
     tray = new Tray(trayIcon('ok'))
@@ -670,12 +781,14 @@ if (!app.requestSingleInstanceLock()) {
     refresh()
     refreshCodex()
     refreshKimi()
+    refreshGrok()
     tickTimer = setInterval(tick, 1000)
 
     const wakeAll = () => {
       runtime.backoff = POLL_BASE_MS; refresh()
       if (codexRuntime.available) { codexRuntime.backoff = POLL_BASE_MS; refreshCodex() }
       if (kimiRuntime.available) { kimiRuntime.backoff = POLL_BASE_MS; refreshKimi() }
+      if (grokRuntime.available) { grokRuntime.backoff = POLL_BASE_MS; refreshGrok() }
     }
     powerMonitor.on('resume', wakeAll)
     powerMonitor.on('unlock-screen', wakeAll)
@@ -688,6 +801,7 @@ if (!app.requestSingleInstanceLock()) {
     clearTimeout(pollTimer)
     clearTimeout(codexPollTimer)
     clearTimeout(kimiPollTimer)
+    clearTimeout(grokPollTimer)
     clearInterval(tickTimer)
   })
 }

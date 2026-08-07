@@ -456,3 +456,71 @@ test('kimi: formato inesperado vira erro nomeado, sem vazar conteudo', () => {
   })
   assert.throws(() => parseKimi('nao e json', NOW), err => err.code === 'BAD_JSON')
 })
+
+// --- grok ---
+
+const { toGrokViewModel } = require('../lib/grok-view-model')
+const { parse: parseGrok } = require('../lib/grok-creds')
+
+const grokFixture = load('fixture-grok-usage.json')
+const GROK_NOW = Date.parse('2026-08-07T15:00:00.000Z')
+
+test('grok: nao tem janela curta, so cota semanal em windows[]', () => {
+  const vm = toGrokViewModel(grokFixture, GROK_NOW)
+  assert.equal(vm.session, null)
+  assert.equal(vm.windows.length, 1)
+  assert.equal(vm.windows[0].name, 'Semana')
+  assert.equal(vm.windows[0].pct, 48)
+})
+
+test('grok: creditUsagePercent omitido em 0%, mas periodo semanal confere com o billing period', () => {
+  const zerado = structuredClone(grokFixture)
+  delete zerado.config.creditUsagePercent
+  const vm = toGrokViewModel(zerado, GROK_NOW)
+  assert.equal(vm.windows[0].pct, 0)
+})
+
+test('grok: periodo nao confirmado sem creditUsagePercent fica sem dado, nao inventa 0%', () => {
+  const inconsistente = structuredClone(grokFixture)
+  delete inconsistente.config.creditUsagePercent
+  inconsistente.config.currentPeriod.start = '2020-01-01T00:00:00.000Z'
+  const vm = toGrokViewModel(inconsistente, GROK_NOW)
+  assert.deepEqual(vm.windows, [])
+})
+
+test('grok: resposta sem config nao derruba a conversao', () => {
+  for (const bad of [null, undefined, {}, { config: null }]) {
+    const vm = toGrokViewModel(bad, GROK_NOW)
+    assert.equal(vm.session, null)
+    assert.deepEqual(vm.windows, [])
+  }
+})
+
+test('grok: auth.json e mapa por issuer, prefere https://auth.x.ai', () => {
+  const c = parseGrok(JSON.stringify({
+    'https://outro.issuer::xyz': { key: 'tok-velho', expires_at: '2020-01-01T00:00:00.000Z' },
+    'https://auth.x.ai::abc': { key: 'tok-bom', user_id: 'user-1', expires_at: '2099-01-01T00:00:00.000Z' }
+  }), NOW)
+  assert.equal(c.token, 'tok-bom')
+  assert.equal(c.userId, 'user-1')
+  assert.equal(c.expired, false)
+})
+
+test('grok: token vencido e marcado antes de gastar a requisicao', () => {
+  const c = parseGrok(JSON.stringify({
+    'https://auth.x.ai::abc': { key: 'tok', expires_at: '2020-01-01T00:00:00.000Z' }
+  }), NOW)
+  assert.equal(c.expired, true)
+})
+
+test('grok: arquivo sem token utilizavel (pos logout) vira NO_FILE, nao erro', () => {
+  assert.throws(() => parseGrok(JSON.stringify({ 'https://auth.x.ai::abc': {} }), NOW), err => {
+    assert.ok(err instanceof CredsError)
+    assert.equal(err.code, 'NO_FILE')
+    return true
+  })
+})
+
+test('grok: formato inesperado vira erro nomeado, sem vazar conteudo', () => {
+  assert.throws(() => parseGrok('nao e json', NOW), err => err.code === 'BAD_JSON')
+})
