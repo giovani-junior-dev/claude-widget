@@ -40,12 +40,14 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "differentialPackage": false
     },
     "publish": {
       "provider": "github",
       "owner": "giovani-junior-dev",
-      "repo": "claude-widget"
+      "repo": "claude-widget",
+      "draft": false
     }
   }
 }
