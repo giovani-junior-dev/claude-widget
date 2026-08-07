@@ -39,6 +39,9 @@
     app-region:drag; -webkit-app-region:drag;
   }
   .grip{width:16px;height:10px;flex:none;background-image:radial-gradient(circle,var(--faint) 1px,transparent 1.2px);background-size:5px 5px;opacity:.85}
+  .titlebar .seg{margin-left:0;flex:none}
+  .titlebar .seg button{app-region:no-drag;-webkit-app-region:no-drag}
+  .who-source{display:none}
   .who{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-right:auto;white-space:nowrap}
   .who b{color:var(--copper);font-weight:600}
   .ctl{
@@ -136,6 +139,8 @@
   body.compact .tokens,body.compact .chev{display:none}
 
   /* modo compacto */
+  body.compact .seg{display:none}
+  body.compact .who-source{display:inline}
   body.compact .primary{padding:14px 16px 10px;gap:14px}
   body.compact .gauge,body.compact .gauge svg{width:68px;height:41px}
   body.compact .num{font-size:19px}
@@ -156,7 +161,11 @@
 
   <div class="titlebar">
     <span class="grip"></span>
-    <span class="who">claude&nbsp;·&nbsp;<b id="plan">—</b></span>
+    <div class="seg" id="source-tabs" role="group" aria-label="Fonte">
+      <button type="button" data-source="claude" aria-pressed="true">claude</button>
+      <button type="button" data-source="codex" aria-pressed="false" hidden>codex</button>
+    </div>
+    <span class="who"><span class="who-source" id="who-source"></span><b id="plan">—</b></span>
     <button class="ctl" id="pin" aria-pressed="true" title="Fixar sobre outras janelas">▲</button>
     <button class="ctl" id="refresh" title="Atualizar agora">↻</button>
     <button class="ctl" id="compact" title="Modo compacto">▢</button>

@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('claudeWidget', {
   toggleCompact: () => ipcRenderer.send('toggle-compact'),
   toggleTokens: () => ipcRenderer.send('toggle-tokens'),
   setTokenDays: days => ipcRenderer.send('set-token-days', days),
+  setSource: source => ipcRenderer.send('set-source', source),
   togglePin: () => ipcRenderer.send('toggle-pin'),
   reportHeight: h => ipcRenderer.send('height', h)
 })

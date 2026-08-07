@@ -172,12 +172,27 @@ function ago (ms) {
   return `há ${Math.round(m / 60)} h`
 }
 
+function renderSourceTabs (source, codexAvailable) {
+  const codexBtn = $('source-tabs').querySelector('[data-source="codex"]')
+  codexBtn.hidden = !codexAvailable
+  for (const b of $('source-tabs').children) {
+    b.setAttribute('aria-pressed', String(b.dataset.source === source))
+  }
+}
+
 function render (state) {
   document.documentElement.dataset.theme = state.theme
   document.body.classList.toggle('compact', !!state.compact)
   document.body.classList.toggle('stale', !!state.stale)
   $('pin').setAttribute('aria-pressed', String(!!state.pinned))
   $('plan').textContent = state.plan || '—'
+  renderSourceTabs(state.source, state.codexAvailable)
+  // No compacto os tabs somem (nao cabem); o nome da fonte migra pra aqui do lado do plano.
+  $('who-source').textContent = (state.source === 'codex' ? 'codex' : 'claude') + ' · '
+
+  // A aba de tokens le o disco do Claude Code: nao existe equivalente pro Codex ainda.
+  const claudeSource = state.source !== 'codex'
+  $('chev').hidden = !claudeSource
 
   const vm = state.vm
   renderSession(vm && vm.session)
@@ -195,9 +210,10 @@ function render (state) {
   $('status-text').textContent = s.text
   $('ago').textContent = ago(state.age)
 
-  $('tokens').classList.toggle('on', !!state.tokensOpen && !state.compact)
-  $('foot').setAttribute('aria-expanded', String(!!state.tokensOpen))
-  if (state.tokensOpen && !state.compact) renderTokens(state.tokens, state.tokenDays, state.tokensBusy)
+  const tokensOpen = claudeSource && !!state.tokensOpen
+  $('tokens').classList.toggle('on', tokensOpen && !state.compact)
+  $('foot').setAttribute('aria-expanded', String(tokensOpen))
+  if (tokensOpen && !state.compact) renderTokens(state.tokens, state.tokenDays, state.tokensBusy)
 
   window.claudeWidget.reportHeight(document.querySelector('.widget').offsetHeight)
 }
@@ -208,4 +224,8 @@ $('refresh').addEventListener('click', () => window.claudeWidget.refresh())
 $('hide').addEventListener('click', () => window.claudeWidget.hide())
 $('compact').addEventListener('click', () => window.claudeWidget.toggleCompact())
 $('pin').addEventListener('click', () => window.claudeWidget.togglePin())
-$('foot').addEventListener('click', () => window.claudeWidget.toggleTokens())
+$('foot').addEventListener('click', () => { if (!$('chev').hidden) window.claudeWidget.toggleTokens() })
+$('source-tabs').addEventListener('click', e => {
+  const b = e.target.closest('button')
+  if (b && !b.hidden) window.claudeWidget.setSource(b.dataset.source)
+})

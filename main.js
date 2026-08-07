@@ -10,6 +10,9 @@ const {
 const { readCreds, CredsError } = require('./lib/creds')
 const { fetchUsage, UsageError } = require('./lib/usage')
 const { toViewModel, worstSeverity } = require('./lib/view-model')
+const codexCreds = require('./lib/codex-creds')
+const { fetchCodexUsage } = require('./lib/codex-usage')
+const { toCodexViewModel } = require('./lib/codex-view-model')
 const windowState = require('./lib/window-state')
 const autostart = require('./lib/autostart')
 const tokenUsage = require('./lib/token-usage')
@@ -47,29 +50,66 @@ const runtime = {
   tokensBusy: false
 }
 
+const codexRuntime = {
+  raw: null,
+  vm: null,
+  at: null,
+  status: 'loading',
+  message: null,
+  stale: false,
+  plan: null,
+  backoff: POLL_BASE_MS,
+  available: true // vira false so quando o Codex CLI nunca rodou nesta maquina
+}
+let codexPollTimer = null
+
+function activeRuntime () {
+  return state.source === 'codex' ? codexRuntime : runtime
+}
+
 // ---------------------------------------------------------------- cache
 
-function cacheFile () {
-  return path.join(app.getPath('userData'), 'last-usage.json')
+function cacheFile (name) {
+  return path.join(app.getPath('userData'), name)
 }
 
 function saveCache () {
   if (!runtime.vm) return
   try {
     fs.mkdirSync(app.getPath('userData'), { recursive: true })
-    fs.writeFileSync(cacheFile(), JSON.stringify({ vm: runtime.vm, at: runtime.at, plan: runtime.plan }))
+    fs.writeFileSync(cacheFile('last-usage.json'), JSON.stringify({ vm: runtime.vm, at: runtime.at, plan: runtime.plan }))
   } catch { /* cache e conveniencia, nao requisito */ }
 }
 
 // Abrir ja com numero, mesmo antes da primeira resposta. Sempre marcado como velho.
 function loadCache () {
   try {
-    const c = JSON.parse(fs.readFileSync(cacheFile(), 'utf8'))
+    const c = JSON.parse(fs.readFileSync(cacheFile('last-usage.json'), 'utf8'))
     if (c && c.vm) {
       runtime.vm = c.vm
       runtime.at = c.at
       runtime.plan = c.plan
       runtime.stale = true
+    }
+  } catch { /* primeira execucao */ }
+}
+
+function saveCodexCache () {
+  if (!codexRuntime.vm) return
+  try {
+    fs.mkdirSync(app.getPath('userData'), { recursive: true })
+    fs.writeFileSync(cacheFile('last-codex-usage.json'), JSON.stringify({ vm: codexRuntime.vm, at: codexRuntime.at, plan: codexRuntime.plan }))
+  } catch { /* cache e conveniencia, nao requisito */ }
+}
+
+function loadCodexCache () {
+  try {
+    const c = JSON.parse(fs.readFileSync(cacheFile('last-codex-usage.json'), 'utf8'))
+    if (c && c.vm) {
+      codexRuntime.vm = c.vm
+      codexRuntime.at = c.at
+      codexRuntime.plan = c.plan
+      codexRuntime.stale = true
     }
   } catch { /* primeira execucao */ }
 }
@@ -128,19 +168,85 @@ function schedule () {
   pollTimer = setTimeout(refresh, runtime.backoff)
 }
 
+// ---------------------------------------------------------------- codex
+
+async function refreshCodex () {
+  let creds
+  try {
+    creds = codexCreds.readCreds()
+  } catch (err) {
+    if (err.code === 'NO_FILE') {
+      // Codex CLI nunca logou nesta maquina: nada pra mostrar, para de bater no disco.
+      codexRuntime.available = false
+      // A aba sumiu: se era ela que estava na tela, volta pra Claude, senao a
+      // janela abre presa numa fonte escondida, travada em "lendo".
+      if (state.source === 'codex') {
+        state = { ...state, source: 'claude' }
+        windowState.save(app, state)
+      }
+      push()
+      return
+    }
+    return failCodex('error', err.message)
+  }
+
+  if (creds.expired) return failCodex('expired', null)
+  if (codexRuntime.plan == null) codexRuntime.plan = creds.plan
+
+  try {
+    const raw = await fetchCodexUsage(creds.token)
+    codexRuntime.raw = raw
+    codexRuntime.at = Date.now()
+    codexRuntime.vm = toCodexViewModel(raw, codexRuntime.at)
+    if (typeof raw.plan_type === 'string') codexRuntime.plan = raw.plan_type
+    codexRuntime.status = 'ok'
+    codexRuntime.message = null
+    codexRuntime.stale = false
+    codexRuntime.backoff = nextBackoff(codexRuntime.backoff, true)
+    saveCodexCache()
+  } catch (err) {
+    const code = err instanceof UsageError ? err.code : 'HTTP_ERROR'
+    if (code === 'TOKEN_EXPIRED') return failCodex('expired', null)
+    if (code === 'OFFLINE' || code === 'TIMEOUT') return failCodex('offline', null)
+    return failCodex('error', err.message)
+  }
+
+  push()
+  scheduleCodex()
+}
+
+function failCodex (status, message) {
+  codexRuntime.status = status
+  codexRuntime.message = message
+  codexRuntime.stale = true
+  codexRuntime.backoff = nextBackoff(codexRuntime.backoff, false)
+  push()
+  scheduleCodex()
+}
+
+function scheduleCodex () {
+  clearTimeout(codexPollTimer)
+  if (!codexRuntime.available) return
+  if (win && !win.isVisible() && codexRuntime.status === 'ok') return
+  codexPollTimer = setTimeout(refreshCodex, codexRuntime.backoff)
+}
+
 function push () {
   if (win && !win.isDestroyed()) {
+    const r = activeRuntime()
     win.webContents.send('state', {
-      vm: runtime.vm,
-      status: runtime.status,
-      message: runtime.message,
-      stale: runtime.stale,
-      plan: runtime.plan,
-      age: runtime.at ? Date.now() - runtime.at : null,
+      source: state.source,
+      codexAvailable: codexRuntime.available,
+      vm: r.vm,
+      status: r.status,
+      message: r.message,
+      stale: r.stale,
+      plan: r.plan,
+      age: r.at ? Date.now() - r.at : null,
       compact: state.compact,
       pinned: state.pinned,
       tokensOpen: state.tokensOpen,
-      tokens: runtime.tokens,
+      tokens: runtime.tokens, // aba de tokens e so do Claude
       tokenDays: state.tokenDays,
       tokensBusy: runtime.tokensBusy,
       theme: theme()
@@ -156,7 +262,10 @@ function tick () {
   if (runtime.status === 'ok' && runtime.raw) {
     runtime.vm = toViewModel(runtime.raw, Date.now())
   }
-  if (state.tokensOpen && !state.compact) refreshTokens()
+  if (codexRuntime.status === 'ok' && codexRuntime.raw) {
+    codexRuntime.vm = toCodexViewModel(codexRuntime.raw, Date.now())
+  }
+  if (state.tokensOpen && !state.compact && state.source === 'claude') refreshTokens()
   push()
 }
 
@@ -194,17 +303,36 @@ function trayIcon (severity) {
 }
 
 function trayTooltip () {
-  if (!runtime.vm || !runtime.vm.session) return 'Consumo Claude Code'
-  const parts = [`Sessão ${runtime.vm.session.pct}%`]
-  if (runtime.vm.windows[0]) parts.push(`Semana ${runtime.vm.windows[0].pct}%`)
-  if (runtime.stale) parts.push('(valor antigo)')
+  const r = activeRuntime()
+  const label = state.source === 'codex' ? 'Codex' : 'Claude'
+  if (!r.vm || (!r.vm.session && !r.vm.windows.length)) return `Consumo ${label}`
+  const parts = [label]
+  if (r.vm.session) parts.push(`Sessão ${r.vm.session.pct}%`)
+  if (r.vm.windows[0]) parts.push(`Semana ${r.vm.windows[0].pct}%`)
+  if (r.stale) parts.push('(valor antigo)')
   return parts.join(' · ')
+}
+
+// Pior severidade entre as fontes disponiveis, nao so a que esta na tela: o
+// icone da bandeja precisa avisar mesmo com a outra aba fechada. Uma fonte
+// disponivel mas com erro (token expirado, offline) tambem conta como aviso,
+// senao o icone volta pra verde escondendo o problema.
+function combinedSeverity () {
+  const sevs = []
+  if (runtime.status === 'ok' && runtime.vm) sevs.push(worstSeverity(runtime.vm))
+  else sevs.push('warn')
+  if (codexRuntime.available) {
+    if (codexRuntime.status === 'ok' && codexRuntime.vm) sevs.push(worstSeverity(codexRuntime.vm))
+    else sevs.push('warn')
+  }
+  if (sevs.includes('crit')) return 'crit'
+  if (sevs.includes('warn')) return 'warn'
+  return 'ok'
 }
 
 function updateTray () {
   if (!tray) return
-  const severity = runtime.status === 'ok' && runtime.vm ? worstSeverity(runtime.vm) : 'warn'
-  tray.setImage(trayIcon(severity))
+  tray.setImage(trayIcon(combinedSeverity()))
   tray.setToolTip(trayTooltip())
   tray.setContextMenu(buildMenu())
 }
@@ -223,7 +351,13 @@ function setAutostart (on) {
 function buildMenu () {
   return Menu.buildFromTemplate([
     { label: win && win.isVisible() ? 'Ocultar' : 'Mostrar', click: toggleWindow },
-    { label: 'Atualizar agora', click: () => { runtime.backoff = POLL_BASE_MS; refresh() } },
+    {
+      label: 'Atualizar agora',
+      click: () => {
+        runtime.backoff = POLL_BASE_MS; refresh()
+        if (codexRuntime.available) { codexRuntime.backoff = POLL_BASE_MS; refreshCodex() }
+      }
+    },
     { type: 'separator' },
     {
       label: 'Iniciar com o Windows',
@@ -246,6 +380,10 @@ function toggleWindow () {
     win.show()
     if (runtime.status !== 'ok' || Date.now() - (runtime.at || 0) > POLL_BASE_MS) refresh()
     else schedule()
+    if (codexRuntime.available) {
+      if (codexRuntime.status !== 'ok' || Date.now() - (codexRuntime.at || 0) > POLL_BASE_MS) refreshCodex()
+      else scheduleCodex()
+    }
   }
   updateTray()
 }
@@ -309,8 +447,22 @@ function createWindow () {
 
 // ---------------------------------------------------------------- ipc
 
-ipcMain.on('refresh', () => { runtime.backoff = POLL_BASE_MS; refresh() })
+ipcMain.on('refresh', () => {
+  if (state.source === 'codex') { codexRuntime.backoff = POLL_BASE_MS; refreshCodex() } else { runtime.backoff = POLL_BASE_MS; refresh() }
+})
 ipcMain.on('hide', () => { if (win) { win.hide(); updateTray() } })
+
+ipcMain.on('set-source', (_e, source) => {
+  if (source !== 'claude' && source !== 'codex') return
+  if (source === 'codex' && !codexRuntime.available) return
+  if (source === state.source) return
+  state = { ...state, source }
+  windowState.save(app, state)
+  push()
+  // Troca pra aba que ainda nao tem dado nenhum: busca na hora, sem esperar o ciclo.
+  if (source === 'codex' && codexRuntime.at == null) refreshCodex()
+  if (source === 'claude' && runtime.at == null) refresh()
+})
 
 ipcMain.on('toggle-pin', () => {
   state = { ...state, pinned: !state.pinned }
@@ -365,6 +517,7 @@ if (!app.requestSingleInstanceLock()) {
 
     state = windowState.load(app)
     loadCache()
+    loadCodexCache()
     createWindow()
 
     tray = new Tray(trayIcon('ok'))
@@ -372,10 +525,17 @@ if (!app.requestSingleInstanceLock()) {
     updateTray()
 
     refresh()
+    refreshCodex()
     tickTimer = setInterval(tick, 1000)
 
-    powerMonitor.on('resume', () => { runtime.backoff = POLL_BASE_MS; refresh() })
-    powerMonitor.on('unlock-screen', () => { runtime.backoff = POLL_BASE_MS; refresh() })
+    powerMonitor.on('resume', () => {
+      runtime.backoff = POLL_BASE_MS; refresh()
+      if (codexRuntime.available) { codexRuntime.backoff = POLL_BASE_MS; refreshCodex() }
+    })
+    powerMonitor.on('unlock-screen', () => {
+      runtime.backoff = POLL_BASE_MS; refresh()
+      if (codexRuntime.available) { codexRuntime.backoff = POLL_BASE_MS; refreshCodex() }
+    })
     nativeTheme.on('updated', push)
   })
 
@@ -383,6 +543,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', () => {
     quitting = true
     clearTimeout(pollTimer)
+    clearTimeout(codexPollTimer)
     clearInterval(tickTimer)
   })
 }

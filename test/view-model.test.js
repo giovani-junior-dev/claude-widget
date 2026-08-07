@@ -299,3 +299,83 @@ test('formato inesperado vira erro nomeado, sem vazar conteudo', () => {
   })
   assert.throws(() => parse('nao e json', NOW), err => err.code === 'BAD_JSON')
 })
+
+// --- codex ---
+
+const { toCodexViewModel } = require('../lib/codex-view-model')
+const { parse: parseCodex } = require('../lib/codex-creds')
+
+const codexFixture = load('fixture-codex-usage.json')
+// Instante que a propria resposta implica: reset_at - reset_after_seconds da janela curta.
+const CODEX_NOW = (codexFixture.rate_limit.secondary_window.reset_at -
+  codexFixture.rate_limit.secondary_window.reset_after_seconds) * 1000
+
+function fakeJwt (payload) {
+  const b64 = obj => Buffer.from(JSON.stringify(obj)).toString('base64url')
+  return `${b64({ alg: 'RS256' })}.${b64(payload)}.assinatura-fake`
+}
+
+test('codex: janela curta vira o mostrador, semanal vira linha', () => {
+  const vm = toCodexViewModel(codexFixture, CODEX_NOW)
+  assert.equal(vm.session.pct, 43)
+  assert.equal(vm.session.countdown, '23 min')
+  assert.equal(vm.windows.length, 1)
+  assert.equal(vm.windows[0].name, 'Semana')
+  assert.equal(vm.windows[0].pct, 11)
+})
+
+test('codex: sem janela curta, mostrador fica vazio mas a semana continua', () => {
+  const semCurta = structuredClone(codexFixture)
+  semCurta.rate_limit.secondary_window = null
+  const vm = toCodexViewModel(semCurta, CODEX_NOW)
+  assert.equal(vm.session, null)
+  assert.equal(vm.windows.length, 1)
+  assert.equal(vm.windows[0].pct, 11)
+})
+
+test('codex: resposta sem rate_limit nao derruba a conversao', () => {
+  for (const bad of [null, undefined, {}, { rate_limit: null }]) {
+    const vm = toCodexViewModel(bad, CODEX_NOW)
+    assert.equal(vm.session, null)
+    assert.deepEqual(vm.windows, [])
+    assert.equal(vm.spend, null)
+  }
+})
+
+test('codex: cortes de severidade sem campo pronto na API', () => {
+  const quente = structuredClone(codexFixture)
+  quente.rate_limit.secondary_window.used_percent = 95
+  assert.equal(toCodexViewModel(quente, CODEX_NOW).session.severity, 'crit')
+
+  quente.rate_limit.secondary_window.used_percent = 80
+  assert.equal(toCodexViewModel(quente, CODEX_NOW).session.severity, 'warn')
+
+  quente.rate_limit.secondary_window.used_percent = 50
+  assert.equal(toCodexViewModel(quente, CODEX_NOW).session.severity, 'ok')
+})
+
+test('codex: credencial valida le token, plano e validade de dentro do JWT', () => {
+  const jwt = fakeJwt({
+    exp: Math.floor(NOW / 1000) + 3600,
+    'https://api.openai.com/auth': { chatgpt_plan_type: 'plus' }
+  })
+  const c = parseCodex(JSON.stringify({ tokens: { access_token: jwt } }), NOW)
+  assert.equal(c.token, jwt)
+  assert.equal(c.plan, 'plus')
+  assert.equal(c.expired, false)
+})
+
+test('codex: credencial vencida e marcada antes de gastar a requisicao', () => {
+  const jwt = fakeJwt({ exp: Math.floor(NOW / 1000) + 30 })
+  const c = parseCodex(JSON.stringify({ tokens: { access_token: jwt } }), NOW)
+  assert.equal(c.expired, true)
+})
+
+test('codex: formato inesperado vira erro nomeado, sem vazar conteudo', () => {
+  assert.throws(() => parseCodex('{"nada": 1}', NOW), err => {
+    assert.ok(err instanceof CredsError)
+    assert.equal(err.code, 'BAD_SHAPE')
+    return true
+  })
+  assert.throws(() => parseCodex('nao e json', NOW), err => err.code === 'BAD_JSON')
+})
