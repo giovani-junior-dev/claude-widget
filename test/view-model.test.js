@@ -379,3 +379,72 @@ test('codex: formato inesperado vira erro nomeado, sem vazar conteudo', () => {
   })
   assert.throws(() => parseCodex('nao e json', NOW), err => err.code === 'BAD_JSON')
 })
+
+// --- kimi ---
+
+const { toKimiViewModel } = require('../lib/kimi-view-model')
+const { parse: parseKimi } = require('../lib/kimi-creds')
+
+const kimiFixture = load('fixture-kimi-usage.json')
+const KIMI_NOW = Date.parse('2026-08-07T06:00:00.000Z')
+
+test('kimi: janela mais curta dos limits[] vira o mostrador, resumo semanal vira linha', () => {
+  const vm = toKimiViewModel(kimiFixture, KIMI_NOW)
+  assert.equal(vm.session.pct, 9)
+  assert.equal(vm.windows.length, 1)
+  assert.equal(vm.windows[0].name, 'Semana')
+  assert.equal(vm.windows[0].pct, 21)
+})
+
+test('kimi: sem limits[], mostrador fica vazio mas o resumo semanal continua', () => {
+  const semLimits = structuredClone(kimiFixture)
+  semLimits.limits = []
+  const vm = toKimiViewModel(semLimits, KIMI_NOW)
+  assert.equal(vm.session, null)
+  assert.equal(vm.windows.length, 1)
+})
+
+test('kimi: resposta invalida nao derruba a conversao', () => {
+  for (const bad of [null, undefined, 42, {}, { usage: null, limits: null }]) {
+    const vm = toKimiViewModel(bad, KIMI_NOW)
+    assert.equal(vm.session, null)
+    assert.deepEqual(vm.windows, [])
+    assert.equal(vm.spend, null)
+  }
+})
+
+test('kimi: limite zerado nao vira divisao por zero', () => {
+  const zerado = structuredClone(kimiFixture)
+  zerado.usage.limit = '0'
+  const vm = toKimiViewModel(zerado, KIMI_NOW)
+  assert.deepEqual(vm.windows, [])
+})
+
+test('kimi: credencial valida le tokens e validade em segundos', () => {
+  const c = parseKimi(JSON.stringify({
+    access_token: 'acc-abc',
+    refresh_token: 'ref-abc',
+    expires_at: Math.floor(NOW / 1000) + 900
+  }), NOW)
+  assert.equal(c.accessToken, 'acc-abc')
+  assert.equal(c.refreshToken, 'ref-abc')
+  assert.equal(c.expired, false)
+})
+
+test('kimi: token de 15 min ja e tratado como vencido perto do limite', () => {
+  const c = parseKimi(JSON.stringify({
+    access_token: 'acc-abc',
+    refresh_token: 'ref-abc',
+    expires_at: Math.floor(NOW / 1000) + 10
+  }), NOW)
+  assert.equal(c.expired, true)
+})
+
+test('kimi: formato inesperado vira erro nomeado, sem vazar conteudo', () => {
+  assert.throws(() => parseKimi('{"nada": 1}', NOW), err => {
+    assert.ok(err instanceof CredsError)
+    assert.equal(err.code, 'BAD_SHAPE')
+    return true
+  })
+  assert.throws(() => parseKimi('nao e json', NOW), err => err.code === 'BAD_JSON')
+})

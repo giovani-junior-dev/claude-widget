@@ -172,11 +172,11 @@ function ago (ms) {
   return `há ${Math.round(m / 60)} h`
 }
 
-function renderSourceTabs (source, codexAvailable) {
-  const codexBtn = $('source-tabs').querySelector('[data-source="codex"]')
-  codexBtn.hidden = !codexAvailable
+function renderSourceTabs (source, available) {
   for (const b of $('source-tabs').children) {
-    b.setAttribute('aria-pressed', String(b.dataset.source === source))
+    const src = b.dataset.source
+    if (src !== 'claude') b.hidden = !available[src]
+    b.setAttribute('aria-pressed', String(src === source))
   }
 }
 
@@ -186,12 +186,12 @@ function render (state) {
   document.body.classList.toggle('stale', !!state.stale)
   $('pin').setAttribute('aria-pressed', String(!!state.pinned))
   $('plan').textContent = state.plan || '—'
-  renderSourceTabs(state.source, state.codexAvailable)
+  renderSourceTabs(state.source, { codex: state.codexAvailable, kimi: state.kimiAvailable })
   // No compacto os tabs somem (nao cabem); o nome da fonte migra pra aqui do lado do plano.
-  $('who-source').textContent = (state.source === 'codex' ? 'codex' : 'claude') + ' · '
+  $('who-source').textContent = state.source + ' · '
 
-  // A aba de tokens le o disco do Claude Code: nao existe equivalente pro Codex ainda.
-  const claudeSource = state.source !== 'codex'
+  // A aba de tokens le o disco do Claude Code: nao existe equivalente pro Codex/Kimi ainda.
+  const claudeSource = state.source === 'claude'
   $('chev').hidden = !claudeSource
 
   const vm = state.vm

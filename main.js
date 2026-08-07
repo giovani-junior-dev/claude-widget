@@ -13,6 +13,10 @@ const { toViewModel, worstSeverity } = require('./lib/view-model')
 const codexCreds = require('./lib/codex-creds')
 const { fetchCodexUsage } = require('./lib/codex-usage')
 const { toCodexViewModel } = require('./lib/codex-view-model')
+const kimiCreds = require('./lib/kimi-creds')
+const kimiOauth = require('./lib/kimi-oauth')
+const { fetchKimiUsage } = require('./lib/kimi-usage')
+const { toKimiViewModel } = require('./lib/kimi-view-model')
 const windowState = require('./lib/window-state')
 const autostart = require('./lib/autostart')
 const tokenUsage = require('./lib/token-usage')
@@ -21,7 +25,7 @@ const { nextBackoff, BASE_MS: POLL_BASE_MS } = require('./lib/poll-policy')
 // A aba de tokens le arquivos do disco, nao a API: ritmo proprio, e so quando aberta.
 const TOKENS_REFRESH_MS = 60_000
 
-const WIDTH = 348
+const WIDTH = 376 // 348 + espaco pras abas de fonte (claude/codex/kimi) na titlebar
 const WIDTH_COMPACT = 230
 
 // Aparencia fixa nos tons creme do mockup. Para voltar a acompanhar o Windows,
@@ -63,8 +67,24 @@ const codexRuntime = {
 }
 let codexPollTimer = null
 
+const kimiRuntime = {
+  raw: null,
+  vm: null,
+  at: null,
+  status: 'loading',
+  message: null,
+  stale: false,
+  plan: null,
+  backoff: POLL_BASE_MS,
+  available: true, // vira false so quando o Kimi Code CLI nunca logou nesta maquina
+  refreshing: false // trava reentrancia: 7 caminhos chamam refreshKimi, e cada refresh de token rotaciona o par no disco
+}
+let kimiPollTimer = null
+
 function activeRuntime () {
-  return state.source === 'codex' ? codexRuntime : runtime
+  if (state.source === 'codex') return codexRuntime
+  if (state.source === 'kimi') return kimiRuntime
+  return runtime
 }
 
 // ---------------------------------------------------------------- cache
@@ -110,6 +130,26 @@ function loadCodexCache () {
       codexRuntime.at = c.at
       codexRuntime.plan = c.plan
       codexRuntime.stale = true
+    }
+  } catch { /* primeira execucao */ }
+}
+
+function saveKimiCache () {
+  if (!kimiRuntime.vm) return
+  try {
+    fs.mkdirSync(app.getPath('userData'), { recursive: true })
+    fs.writeFileSync(cacheFile('last-kimi-usage.json'), JSON.stringify({ vm: kimiRuntime.vm, at: kimiRuntime.at, plan: kimiRuntime.plan }))
+  } catch { /* cache e conveniencia, nao requisito */ }
+}
+
+function loadKimiCache () {
+  try {
+    const c = JSON.parse(fs.readFileSync(cacheFile('last-kimi-usage.json'), 'utf8'))
+    if (c && c.vm) {
+      kimiRuntime.vm = c.vm
+      kimiRuntime.at = c.at
+      kimiRuntime.plan = c.plan
+      kimiRuntime.stale = true
     }
   } catch { /* primeira execucao */ }
 }
@@ -231,12 +271,96 @@ function scheduleCodex () {
   codexPollTimer = setTimeout(refreshCodex, codexRuntime.backoff)
 }
 
+// ---------------------------------------------------------------- kimi
+
+async function refreshKimi () {
+  if (kimiRuntime.refreshing) return
+  kimiRuntime.refreshing = true
+  try {
+    await refreshKimiInner()
+  } finally {
+    kimiRuntime.refreshing = false
+  }
+}
+
+async function refreshKimiInner () {
+  let creds
+  try {
+    creds = kimiCreds.readCreds()
+  } catch (err) {
+    if (err.code === 'NO_FILE') {
+      // Kimi Code CLI nunca logou nesta maquina: nada pra mostrar, para de bater no disco.
+      kimiRuntime.available = false
+      if (state.source === 'kimi') {
+        state = { ...state, source: 'claude' }
+        windowState.save(app, state)
+      }
+      push()
+      return
+    }
+    return failKimi('error', err.message)
+  }
+
+  // Token dura so 15 min: quase toda leitura passa por aqui. Regrava o par
+  // novo no arquivo do CLI real, senao o login dele quebra na proxima vez.
+  let accessToken = creds.accessToken
+  if (creds.expired) {
+    try {
+      const refreshed = await kimiOauth.refreshAccessToken(creds.refreshToken)
+      kimiCreds.writeCreds(refreshed)
+      accessToken = refreshed.access_token
+    } catch (err) {
+      const code = err instanceof kimiOauth.KimiOAuthError ? err.code : 'HTTP_ERROR'
+      if (code === 'TOKEN_EXPIRED') return failKimi('expired', null)
+      if (code === 'OFFLINE' || code === 'TIMEOUT') return failKimi('offline', null)
+      return failKimi('error', err.message)
+    }
+  }
+
+  try {
+    const raw = await fetchKimiUsage(accessToken)
+    kimiRuntime.raw = raw
+    kimiRuntime.at = Date.now()
+    kimiRuntime.vm = toKimiViewModel(raw, kimiRuntime.at)
+    kimiRuntime.status = 'ok'
+    kimiRuntime.message = null
+    kimiRuntime.stale = false
+    kimiRuntime.backoff = nextBackoff(kimiRuntime.backoff, true)
+    saveKimiCache()
+  } catch (err) {
+    const code = err instanceof UsageError ? err.code : 'HTTP_ERROR'
+    if (code === 'TOKEN_EXPIRED') return failKimi('expired', null)
+    if (code === 'OFFLINE' || code === 'TIMEOUT') return failKimi('offline', null)
+    return failKimi('error', err.message)
+  }
+
+  push()
+  scheduleKimi()
+}
+
+function failKimi (status, message) {
+  kimiRuntime.status = status
+  kimiRuntime.message = message
+  kimiRuntime.stale = true
+  kimiRuntime.backoff = nextBackoff(kimiRuntime.backoff, false)
+  push()
+  scheduleKimi()
+}
+
+function scheduleKimi () {
+  clearTimeout(kimiPollTimer)
+  if (!kimiRuntime.available) return
+  if (win && !win.isVisible() && kimiRuntime.status === 'ok') return
+  kimiPollTimer = setTimeout(refreshKimi, kimiRuntime.backoff)
+}
+
 function push () {
   if (win && !win.isDestroyed()) {
     const r = activeRuntime()
     win.webContents.send('state', {
       source: state.source,
       codexAvailable: codexRuntime.available,
+      kimiAvailable: kimiRuntime.available,
       vm: r.vm,
       status: r.status,
       message: r.message,
@@ -264,6 +388,9 @@ function tick () {
   }
   if (codexRuntime.status === 'ok' && codexRuntime.raw) {
     codexRuntime.vm = toCodexViewModel(codexRuntime.raw, Date.now())
+  }
+  if (kimiRuntime.status === 'ok' && kimiRuntime.raw) {
+    kimiRuntime.vm = toKimiViewModel(kimiRuntime.raw, Date.now())
   }
   if (state.tokensOpen && !state.compact && state.source === 'claude') refreshTokens()
   push()
@@ -302,9 +429,11 @@ function trayIcon (severity) {
   return img.isEmpty() ? nativeImage.createEmpty() : img
 }
 
+const SOURCE_LABEL = { claude: 'Claude', codex: 'Codex', kimi: 'Kimi' }
+
 function trayTooltip () {
   const r = activeRuntime()
-  const label = state.source === 'codex' ? 'Codex' : 'Claude'
+  const label = SOURCE_LABEL[state.source] || SOURCE_LABEL.claude
   if (!r.vm || (!r.vm.session && !r.vm.windows.length)) return `Consumo ${label}`
   const parts = [label]
   if (r.vm.session) parts.push(`Sessão ${r.vm.session.pct}%`)
@@ -323,6 +452,10 @@ function combinedSeverity () {
   else sevs.push('warn')
   if (codexRuntime.available) {
     if (codexRuntime.status === 'ok' && codexRuntime.vm) sevs.push(worstSeverity(codexRuntime.vm))
+    else sevs.push('warn')
+  }
+  if (kimiRuntime.available) {
+    if (kimiRuntime.status === 'ok' && kimiRuntime.vm) sevs.push(worstSeverity(kimiRuntime.vm))
     else sevs.push('warn')
   }
   if (sevs.includes('crit')) return 'crit'
@@ -356,6 +489,7 @@ function buildMenu () {
       click: () => {
         runtime.backoff = POLL_BASE_MS; refresh()
         if (codexRuntime.available) { codexRuntime.backoff = POLL_BASE_MS; refreshCodex() }
+        if (kimiRuntime.available) { kimiRuntime.backoff = POLL_BASE_MS; refreshKimi() }
       }
     },
     { type: 'separator' },
@@ -383,6 +517,10 @@ function toggleWindow () {
     if (codexRuntime.available) {
       if (codexRuntime.status !== 'ok' || Date.now() - (codexRuntime.at || 0) > POLL_BASE_MS) refreshCodex()
       else scheduleCodex()
+    }
+    if (kimiRuntime.available) {
+      if (kimiRuntime.status !== 'ok' || Date.now() - (kimiRuntime.at || 0) > POLL_BASE_MS) refreshKimi()
+      else scheduleKimi()
     }
   }
   updateTray()
@@ -447,21 +585,25 @@ function createWindow () {
 
 // ---------------------------------------------------------------- ipc
 
+const SOURCE_RUNTIME = { claude: () => runtime, codex: () => codexRuntime, kimi: () => kimiRuntime }
+const SOURCE_REFRESH = { claude: () => refresh(), codex: () => refreshCodex(), kimi: () => refreshKimi() }
+
 ipcMain.on('refresh', () => {
-  if (state.source === 'codex') { codexRuntime.backoff = POLL_BASE_MS; refreshCodex() } else { runtime.backoff = POLL_BASE_MS; refresh() }
+  const r = SOURCE_RUNTIME[state.source]()
+  r.backoff = POLL_BASE_MS
+  SOURCE_REFRESH[state.source]()
 })
 ipcMain.on('hide', () => { if (win) { win.hide(); updateTray() } })
 
 ipcMain.on('set-source', (_e, source) => {
-  if (source !== 'claude' && source !== 'codex') return
-  if (source === 'codex' && !codexRuntime.available) return
+  if (!SOURCE_RUNTIME[source]) return
+  if (source !== 'claude' && !SOURCE_RUNTIME[source]().available) return
   if (source === state.source) return
   state = { ...state, source }
   windowState.save(app, state)
   push()
   // Troca pra aba que ainda nao tem dado nenhum: busca na hora, sem esperar o ciclo.
-  if (source === 'codex' && codexRuntime.at == null) refreshCodex()
-  if (source === 'claude' && runtime.at == null) refresh()
+  if (SOURCE_RUNTIME[source]().at == null) SOURCE_REFRESH[source]()
 })
 
 ipcMain.on('toggle-pin', () => {
@@ -518,6 +660,7 @@ if (!app.requestSingleInstanceLock()) {
     state = windowState.load(app)
     loadCache()
     loadCodexCache()
+    loadKimiCache()
     createWindow()
 
     tray = new Tray(trayIcon('ok'))
@@ -526,16 +669,16 @@ if (!app.requestSingleInstanceLock()) {
 
     refresh()
     refreshCodex()
+    refreshKimi()
     tickTimer = setInterval(tick, 1000)
 
-    powerMonitor.on('resume', () => {
+    const wakeAll = () => {
       runtime.backoff = POLL_BASE_MS; refresh()
       if (codexRuntime.available) { codexRuntime.backoff = POLL_BASE_MS; refreshCodex() }
-    })
-    powerMonitor.on('unlock-screen', () => {
-      runtime.backoff = POLL_BASE_MS; refresh()
-      if (codexRuntime.available) { codexRuntime.backoff = POLL_BASE_MS; refreshCodex() }
-    })
+      if (kimiRuntime.available) { kimiRuntime.backoff = POLL_BASE_MS; refreshKimi() }
+    }
+    powerMonitor.on('resume', wakeAll)
+    powerMonitor.on('unlock-screen', wakeAll)
     nativeTheme.on('updated', push)
   })
 
@@ -544,6 +687,7 @@ if (!app.requestSingleInstanceLock()) {
     quitting = true
     clearTimeout(pollTimer)
     clearTimeout(codexPollTimer)
+    clearTimeout(kimiPollTimer)
     clearInterval(tickTimer)
   })
 }
