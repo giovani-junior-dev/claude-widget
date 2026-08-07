@@ -413,6 +413,14 @@ test('kimi: resposta invalida nao derruba a conversao', () => {
   }
 })
 
+test('kimi: "used" zerado vem omitido da API (remaining=limit), nao pode sumir a sessao', () => {
+  const zeroUsado = structuredClone(kimiFixture)
+  delete zeroUsado.limits[0].detail.used
+  zeroUsado.limits[0].detail.remaining = '100'
+  const vm = toKimiViewModel(zeroUsado, KIMI_NOW)
+  assert.equal(vm.session.pct, 0)
+})
+
 test('kimi: limite zerado nao vira divisao por zero', () => {
   const zerado = structuredClone(kimiFixture)
   zerado.usage.limit = '0'

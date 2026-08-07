@@ -25,7 +25,7 @@ const { nextBackoff, BASE_MS: POLL_BASE_MS } = require('./lib/poll-policy')
 // A aba de tokens le arquivos do disco, nao a API: ritmo proprio, e so quando aberta.
 const TOKENS_REFRESH_MS = 60_000
 
-const WIDTH = 376 // 348 + espaco pras abas de fonte (claude/codex/kimi) na titlebar
+const WIDTH = 352 // 348 + espaco pras abas de fonte (claude/codex/kimi) na titlebar
 const WIDTH_COMPACT = 230
 
 // Aparencia fixa nos tons creme do mockup. Para voltar a acompanhar o Windows,

@@ -14,7 +14,7 @@
   "limits": [
     {
       "window": { "duration": 300, "timeUnit": "TIME_UNIT_MINUTE" },
-      "detail": { "limit": "100", "used": "9", "remaining": "91", "resetTime": "2026-08-07T07:42:13.961407Z" }
+      "detail": { "limit": "100", "remaining": "91", "resetTime": "2026-08-07T07:42:13.961407Z" }
     }
   ],
   "parallel": { "limit": "20" },
