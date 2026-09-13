@@ -6,6 +6,7 @@ const {
   app, BrowserWindow, Tray, Menu, ipcMain, screen,
   nativeTheme, powerMonitor, shell, nativeImage
 } = require('electron')
+const { autoUpdater } = require('electron-updater')
 
 const { readCreds, CredsError } = require('./lib/creds')
 const { fetchUsage, UsageError } = require('./lib/usage')
@@ -783,6 +784,10 @@ if (!app.requestSingleInstanceLock()) {
     refreshKimi()
     refreshGrok()
     tickTimer = setInterval(tick, 1000)
+
+    // ponytail: checa 1x na abertura, sem agendamento proprio; quem reabre o
+    // app (dia seguinte) ja cobre o ritmo de verificacao.
+    autoUpdater.checkForUpdatesAndNotify().catch(err => console.error('update:', err.message))
 
     const wakeAll = () => {
       runtime.backoff = POLL_BASE_MS; refresh()
