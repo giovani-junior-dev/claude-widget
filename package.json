@@ -49,5 +49,8 @@
       "repo": "claude-widget",
       "releaseType": "release"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }
