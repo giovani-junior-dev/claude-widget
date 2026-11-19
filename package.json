@@ -2,7 +2,7 @@
   "name": "claude-widget",
   "version": "1.1.0",
   "private": true,
-  "description": "Widget de desktop que mostra o consumo de Claude Code, Codex, Kimi Code e Grok Build",
+  "description": "Ilha dinâmica para Windows com o consumo de Claude Code, Codex, Kimi Code, Grok Build, Antigravity, ZCode e Qwen Code",
   "author": "Giovani Junior",
   "main": "main.js",
   "scripts": {
