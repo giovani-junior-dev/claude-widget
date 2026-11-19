@@ -95,13 +95,33 @@ const agModels = {
 
 test('antigravity: modelos que dividem a cota viram uma linha so', () => {
   const vm = toAntigravityViewModel(agModels, NOW)
-  assert.deepEqual(vm.windows.map(w => [w.name, w.pct]), [['Gemini', 40], ['Claude · GPT-OSS', 5]])
+  assert.deepEqual(vm.windows.map(w => [w.name, w.pct]), [['Claude · GPT-OSS · 5 h', 5], ['Gemini · 5 h', 40]])
+})
+
+test('antigravity: resumo por grupo traz semana e 5 h, e tira essas familias da cota por modelo', () => {
+  const raw = {
+    ...agModels,
+    groups: [{
+      displayName: 'Claude and GPT models',
+      buckets: [
+        { window: 'weekly', remainingFraction: 0.9, resetTime: '2026-11-26T12:46:58Z' },
+        { window: '5h', remainingFraction: 0.7, resetTime: '2026-11-19T07:46:58Z' }
+      ]
+    }]
+  }
+  const vm = toAntigravityViewModel(raw, NOW)
+  assert.deepEqual(vm.windows.map(w => [w.name, w.pct]), [
+    ['Claude · GPT · 5 h', 30],
+    ['Claude · GPT · semana', 10],
+    ['Gemini · 5 h', 40]
+  ])
+  assert.equal(vm.session.label, 'Gemini · 5 h')
 })
 
 test('antigravity: mostrador e a cota mais gasta, com contagem ate o reset', () => {
   const vm = toAntigravityViewModel(agModels, NOW)
   assert.equal(vm.session.pct, 40)
-  assert.equal(vm.session.label, 'Gemini')
+  assert.equal(vm.session.label, 'Gemini · 5 h')
   assert.equal(vm.session.countdown, '4 h 50')
 })
 
