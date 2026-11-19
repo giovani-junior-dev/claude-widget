@@ -1,75 +1,129 @@
 # claude-widget
 
-Painel flutuante para Windows que mostra, sem abrir o navegador, quanto da sua
-conta Claude Code já foi consumido: a sessão de 5 horas, a janela semanal, os
-limites por modelo e os créditos extras. Abre também uma aba com os tokens
-gastos por modelo nos últimos 7, 30 ou 90 dias.
+Uma "ilha dinâmica" para Windows, no estilo do iPhone, que mostra quanto você
+já gastou de cada ferramenta de IA de código: **Claude Code, Codex, Kimi Code,
+Grok Build, Google Antigravity, ZCode (Z.ai) e Qwen Code**.
+
+Fica como uma pílula preta no centro do topo da tela, alternando entre as fontes
+como uma Live Activity. Passe o mouse e ela se expande numa lista com todas as
+fontes. Clique numa delas para ver o painel completo: sessão curta, janelas
+semanais, créditos extras e, no Claude, os tokens gastos por modelo.
 
 <p align="center">
-  <img src="docs/widget.png" alt="O widget mostrando sessão em 42%, semana em 30% e créditos extras" width="350">
-  <img src="docs/tokens.png" alt="A aba de tokens por modelo expandida" width="350">
+  <img src="docs/hero.png" alt="A ilha em pílula no topo, a lista com as sete fontes, o detalhe do Claude e a cápsula vertical presa na lateral">
 </p>
 
-> As imagens acima usam dados de demonstração.
+<table>
+  <tr>
+    <td align="center"><img src="docs/ilha-pilula.png" alt="Pílula no topo da tela" width="300"><br><sub>Pílula: alterna entre as fontes</sub></td>
+    <td align="center" rowspan="2"><img src="docs/ilha-lista.png" alt="Lista com as sete fontes" width="330"><br><sub>Mouse em cima: todas as fontes</sub></td>
+    <td align="center" rowspan="2"><img src="docs/ilha-detalhe.png" alt="Detalhe do Claude" width="330"><br><sub>Clique: o detalhe de uma fonte</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/ilha-vertical.png" alt="Cápsula vertical" width="70"><br><sub>Presa na lateral: vertical</sub></td>
+  </tr>
+</table>
+
+> As imagens usam o modo de demonstração (`CLAUDE_WIDGET_DEMO=1`), com números fictícios.
+
+## Download
+
+Baixe o instalador em **[Releases → última versão](https://github.com/giovani-junior-dev/claude-widget/releases/latest)**
+(`Claude-Widget-Setup-<versão>.exe`), rode e pronto: a ilha aparece no topo da
+tela e o ícone fica na bandeja. Quem já tem uma versão instalada recebe a
+atualização sozinho na próxima abertura.
+
+O instalador não é assinado, então o Windows SmartScreen pode avisar na primeira
+vez: **Mais informações → Executar assim mesmo**.
 
 ## Por que existe
 
 Os limites que importam são invisíveis até estourarem. A sessão de 5 h reinicia
-em horário móvel, a janela semanal reinicia em outro, e os créditos extras
-correm por fora dos dois. Descobrir o estado exige abrir o navegador,
-autenticar e ler uma página — atrito suficiente para ninguém fazer, o que leva
-a bater no limite no meio de uma tarefa longa, sem aviso.
+em horário móvel, a janela semanal reinicia em outro, e cada ferramenta tem a
+sua regra. Descobrir o estado exige abrir sete painéis diferentes — atrito
+suficiente para ninguém fazer, o que leva a bater no limite no meio de uma
+tarefa longa, sem aviso.
+
+## A ilha
+
+| Estado | Como chega | O que mostra |
+|---|---|---|
+| Pílula | sempre visível | logo, contagem regressiva, % e anel da fonte atual; troca de fonte a cada 6 s |
+| Expandida | mouse em cima | uma linha por fonte: anel da janela curta, barra da semana, plano e reinício |
+| Detalhe | clique numa fonte | mostrador grande, todas as janelas, créditos e tokens por modelo (Claude) |
+
+Fora da pílula, os cliques passam direto para a janela de baixo. A borda respira
+em vermelho quando alguma fonte entra em estado crítico. `Esc` volta um nível.
+
+**Arrastar.** Segure a ilha (fora dos botões) e puxe: ela encolhe para pílula e
+segue o cursor. Ao soltar, prende no lado mais próximo e passa a crescer para
+dentro da tela. Perto da base, por exemplo, ela abre para cima. Solte perto do
+topo central, ou use **Voltar ao topo** na bandeja, para devolvê-la ao lugar
+original.
+
+**Esconder fontes.** No menu da bandeja, em **Fontes**, desmarque as contas que
+você não usa mais. Elas somem da ilha e deixam de ser consultadas. Pelo menos
+uma fica sempre visível.
 
 ## De onde vêm os números
 
-**Os percentuais** vêm do endpoint oficial de uso da Anthropic
-(`GET api.anthropic.com/api/oauth/usage`), consultado com a credencial OAuth que
-o próprio Claude Code já mantém em `%USERPROFILE%\.claude\.credentials.json`.
-É o mesmo endpoint que o `/usage` do CLI usa. Refletem a **conta inteira**.
+| Fonte | Credencial (só leitura, salvo o Kimi) | Endpoint |
+|---|---|---|
+| Claude Code | `~/.claude/.credentials.json` | `api.anthropic.com/api/oauth/usage` |
+| Codex | `~/.codex/auth.json` | `chatgpt.com/backend-api/wham/usage` |
+| Kimi Code | `~/.kimi-code/credentials/kimi-code.json` | `api.kimi.com/coding/v1/usages` |
+| Grok Build | `~/.grok/auth.json` | `cli-chat-proxy.grok.com/v1/billing` |
+| Antigravity | Gerenciador de Credenciais do Windows, alvo `gemini:antigravity` (gravado pelo `agy`) | `daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels` |
+| ZCode | `~/.zcode/v2/credentials.json`, cifrado pelo app (AES-256-GCM) | `api.z.ai/api/monitor/usage/quota/limit` |
+| Qwen Code | nenhuma: lê `~/.qwen/projects/*/chats/*.jsonl` | nenhum, é local |
 
-**Os tokens por modelo** vêm dos transcripts que o Claude Code grava em
-`%USERPROFILE%\.claude\projects\**\*.jsonl`, onde cada resposta traz o modelo e
-o `usage`. Refletem **apenas aquela máquina** — se você usa o Claude Code em
-mais de um computador, cada widget mostra a sua parte.
+Detalhes que não são óbvios:
 
-Nada é estimado. Até a cor de alerta (verde, âmbar, vermelho) vem do campo
-`severity` da própria API, em vez de um limiar inventado localmente.
+- **Antigravity** devolve a cota por modelo. Modelos que dividem a mesma cota
+  (mesma fração e mesmo reinício) viram uma linha só, como "Gemini" e
+  "Claude · GPT-OSS". O mostrador mostra a cota mais gasta.
+- **ZCode** guarda o token cifrado com uma chave derivada do usuário do Windows,
+  a mesma que o app usa. O widget decifra só em memória e nunca regrava o arquivo.
+- **Qwen Code** com o Coding Plan do Model Studio não tem endpoint público de
+  cota. O widget conta as requisições (`qwen-code.api_response`) no histórico
+  local, em janelas móveis de 5 h, 7 e 30 dias, contra o limite do plano: Lite
+  1.200 / 9.000 / 18.000 ou Pro 6.000 / 45.000 / 90.000. Escolha o plano no menu
+  da bandeja. É a **única fonte estimada**, e a tela avisa isso. Uso feito em
+  outra máquina não entra.
+- **Tokens por modelo** (só Claude) vêm dos transcripts locais e refletem
+  apenas esta máquina.
 
-## Instalação
+Nas fontes que mandam severidade (Claude), a cor de alerta vem da API. Nas
+outras, âmbar a partir de 75% e vermelho a partir de 90%.
 
-Requisitos: Windows 10/11 64 bits, Node.js 22.12 ou mais novo, e o Claude Code
-instalado e autenticado na máquina.
+## Rodar a partir do código
+
+Requisitos: Windows 10/11 64 bits, Node.js 22.12 ou mais novo. Cada fonte
+aparece sozinha quando a ferramenta correspondente estiver instalada e logada.
 
 ```powershell
 git clone https://github.com/giovani-junior-dev/claude-widget.git
 cd claude-widget
 
-npm install        # a única dependência é o Electron
+npm install
 npm run preparar   # baixa o binário do Electron, ~100 MB, só na primeira vez
-npm test           # 31 verificações
+npm test
 npm start
 ```
 
-O passo `npm run preparar` não é opcional e o motivo não é óbvio: o Electron 43
-**não** baixa o binário durante o `npm install`, ele espera o primeiro uso. Sem
-esse passo, o `npm start` parece travado enquanto baixa 100 MB em silêncio. O
-`npm run preparar` faz o mesmo download mostrando o progresso, e termina
-imprimindo `v43.2.0`.
+O passo `npm run preparar` não é opcional: o Electron 43 **não** baixa o binário
+durante o `npm install`. Sem esse passo, o `npm start` parece travado enquanto
+baixa 100 MB em silêncio.
 
 ## Uso
 
 | Onde | O quê |
 |---|---|
-| Barra de topo | Arrasta a janela |
-| ▲ | Fixa sobre as outras janelas |
-| ↻ | Atualiza agora |
-| ▢ | Modo compacto |
+| Pílula | Passe o mouse para expandir, segure e puxe para mudar de lugar |
+| ↻ | Atualiza tudo (na lista) ou só a fonte (no detalhe) |
 | — | Recolhe para a bandeja |
-| Rodapé | Abre e fecha a aba de tokens por modelo |
 | Ícone da bandeja | Mostra e esconde; clique direito abre o menu |
-
-Posição, modo compacto, período da aba e "sempre no topo" ficam guardados entre
-uma abertura e outra.
+| Menu da bandeja | Monitor, voltar ao topo, fontes visíveis, plano do Qwen, iniciar com o Windows |
 
 ### Abrir junto com o Windows
 
@@ -81,77 +135,77 @@ npm run autostart:off
 npm run autostart:status
 ```
 
-É um atalho na pasta Inicializar. Nada é escrito no registro, e apagar o atalho
-à mão também desliga — o menu reflete o estado real do arquivo.
-
-### Levar para outra máquina
-
-```powershell
-npm run empacotar   # gera claude-widget.zip, ~52 KB, só o código
-```
-
 ## Privacidade
 
-- A credencial é aberta **somente para leitura**. O widget nunca escreve nela,
-  para não disputar o arquivo com o próprio Claude Code.
-- O token fica no processo principal e **nunca chega à janela**: para lá vão
-  apenas números e textos já prontos. O renderer roda com isolamento de contexto
-  ligado, sem integração com Node, e não carrega nada além do HTML local.
-- A única conexão de rede é com `api.anthropic.com`. Não há telemetria.
-- Quando o token expira, o widget avisa e espera você abrir o Claude Code. Ele
-  não tenta renovar sozinho.
+- As credenciais são lidas **somente para leitura**. A exceção é o Kimi Code, cujo
+  token dura 15 min: o widget renova e regrava o par no mesmo formato do CLI,
+  senão o login dele quebraria.
+- Os tokens ficam no processo principal e **nunca chegam à janela**: para lá vão
+  apenas números e textos já prontos. O renderer roda com isolamento de contexto,
+  sem Node, e só carrega o HTML e as logos locais.
+- Conexões de rede: só os endpoints da tabela acima. Não há telemetria.
+- Quando um token expira, o widget avisa e espera a ferramenta renovar.
 
 ## Comportamento em falhas
 
 | Situação | O que acontece |
 |---|---|
-| Credencial expirada | Faixa âmbar pedindo para abrir o Claude Code; último valor em cinza, com a hora |
+| Credencial expirada | Ponto âmbar na fonte e aviso no detalhe dizendo o que abrir; último valor em cinza |
 | Sem conexão | Continua tentando, dobrando o intervalo de 5 até 30 minutos |
-| Resposta em formato inesperado | O campo vira travessão; o resto da tela continua funcionando |
+| Ferramenta nunca usada nesta máquina | A fonte não aparece |
 | Campo ausente na resposta | Travessão, nunca `0%` |
-
-O widget prefere mostrar um dado velho e avisado a inventar um novo.
 
 ## Desenvolvimento
 
 ```powershell
-npm test                 # node:test, sem framework
+npm test
 npm run icons            # regenera os ícones da bandeja
 ```
+
+Modo de demonstração, com números fictícios e preferências em pasta separada
+(não toca credenciais nem rede):
+
+```powershell
+$env:CLAUDE_WIDGET_DEMO = '1'; npm start
+```
+
+Publicar uma versão: suba o `version` do `package.json`, crie a tag `v<versão>`
+e faça push dela. O GitHub Actions gera o instalador e publica o release.
 
 Estrutura:
 
 ```
-main.js             janela, bandeja, ciclo de atualização, IPC
-preload.js          ponte mínima entre processo principal e janela
-index.html          a interface
-renderer.js         desenha os dados na tela
-lib/creds.js        lê e valida a credencial local
-lib/usage.js        a chamada HTTP
-lib/view-model.js   converte a resposta no que a tela mostra (função pura)
-lib/token-usage.js  tokens por modelo, com índice incremental
-lib/window-state.js posição e preferências, validadas contra os monitores
-lib/poll-policy.js  intervalo entre consultas e recuo em caso de falha
-lib/autostart.js    o atalho da pasta Inicializar
-tools/              ícones, empacotamento, início automático por CLI
-test/               fixtures com a estrutura real da API e as verificações
+main.js                 janela, bandeja, ciclo único de atualização, hover, IPC
+preload.js              ponte mínima entre processo principal e janela
+index.html, renderer.js a ilha: pílula, lista e detalhe
+assets/logos/           logos das fontes (svgl.app; ZCode redesenhado do ícone do app)
+lib/providers.js        registro das fontes: credencial, busca e conversão de cada uma
+lib/*-creds.js          leitura das credenciais locais
+lib/*-usage.js          as chamadas HTTP (Qwen: contagem no disco)
+lib/*-view-model.js     resposta crua -> formato de tela comum (funções puras)
+lib/token-usage.js      tokens por modelo do Claude, com índice incremental
+lib/window-state.js     preferências guardadas
+lib/poll-policy.js      intervalo entre consultas e recuo em caso de falha
+lib/autostart.js        o atalho da pasta Inicializar
+lib/demo.js             dados fictícios do modo de demonstração
+test/                   fixtures com a estrutura real das APIs e as verificações
 ```
 
-A leitura dos transcripts usa um índice incremental: como esses arquivos só
-crescem no fim, cada consulta reprocessa apenas o trecho novo. Na prática, a
-primeira varredura de 7 dias leva cerca de 2 s e as seguintes, incluindo trocar
-o período, ficam em torno de 40 ms.
+Para somar uma fonte nova: um `*-creds.js`, um `*-usage.js`, um `*-view-model.js`,
+uma entrada em `lib/providers.js` e a logo em `assets/logos/<id>.svg`.
+
+O hover é detectado pelo processo principal, consultando o cursor a cada 50 ms:
+no Windows, uma janela transparente que deixa o clique passar não recebe os
+eventos de mouse encaminhados.
 
 ## Limitações conhecidas
 
-- **Só Windows.** O código do widget é portável, mas o início automático usa
-  atalho da pasta Inicializar, que é específico do Windows.
-- **Tokens não viram percentual de limite.** A Anthropic não expõe a fórmula que
-  converte uso em cota, então a aba informa consumo, não prevê quando você bate
-  no teto.
-- **A aba de tokens é por máquina**, não por conta.
-- **Não é oficial** e não tem vínculo com a Anthropic. Usa o mesmo endpoint que
-  o Claude Code usa, com a credencial que ele já guarda localmente.
+- **Só Windows.** O Antigravity lê o Gerenciador de Credenciais do Windows e o
+  início automático usa a pasta Inicializar.
+- **Qwen é estimativa local**, ver acima.
+- **Antigravity e ZCode usam endpoints internos** dos próprios apps. Se eles
+  mudarem, a fonte vira erro sem derrubar as outras.
+- **Não é oficial** e não tem vínculo com nenhum dos provedores.
 
 ## Licença
 
