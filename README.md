@@ -35,6 +35,16 @@ tarefa longa, sem aviso.
 Fora da pílula, os cliques passam direto para a janela de baixo. A borda respira
 em vermelho quando alguma fonte entra em estado crítico. `Esc` volta um nível.
 
+**Arrastar.** Segure a ilha (fora dos botões) e puxe: ela encolhe para pílula e
+segue o cursor. Ao soltar, prende no lado mais próximo e passa a crescer para
+dentro da tela. Perto da base, por exemplo, ela abre para cima. Solte perto do
+topo central, ou use **Voltar ao topo** na bandeja, para devolvê-la ao lugar
+original.
+
+**Esconder fontes.** No menu da bandeja, em **Fontes**, desmarque as contas que
+você não usa mais. Elas somem da ilha e deixam de ser consultadas. Pelo menos
+uma fica sempre visível.
+
 ## De onde vêm os números
 
 | Fonte | Credencial (só leitura, salvo o Kimi) | Endpoint |
@@ -89,11 +99,11 @@ baixa 100 MB em silêncio.
 
 | Onde | O quê |
 |---|---|
-| Pílula | Passe o mouse para expandir, clique para fixar aberta |
+| Pílula | Passe o mouse para expandir, segure e puxe para mudar de lugar |
 | ↻ | Atualiza tudo (na lista) ou só a fonte (no detalhe) |
 | — | Recolhe para a bandeja |
 | Ícone da bandeja | Mostra e esconde; clique direito abre o menu |
-| Menu da bandeja | Monitor onde a ilha fica, plano do Qwen, iniciar com o Windows |
+| Menu da bandeja | Monitor, voltar ao topo, fontes visíveis, plano do Qwen, iniciar com o Windows |
 
 ### Abrir junto com o Windows
 
