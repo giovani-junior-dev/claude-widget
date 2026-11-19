@@ -10,11 +10,31 @@ fontes. Clique numa delas para ver o painel completo: sessão curta, janelas
 semanais, créditos extras e, no Claude, os tokens gastos por modelo.
 
 <p align="center">
-  <img src="docs/widget.png" alt="O widget mostrando sessão em 42%, semana em 30% e créditos extras" width="350">
-  <img src="docs/tokens.png" alt="A aba de tokens por modelo expandida" width="350">
+  <img src="docs/hero.png" alt="A ilha em pílula no topo, a lista com as sete fontes, o detalhe do Claude e a cápsula vertical presa na lateral">
 </p>
 
-> As imagens acima usam dados de demonstração.
+<table>
+  <tr>
+    <td align="center"><img src="docs/ilha-pilula.png" alt="Pílula no topo da tela" width="300"><br><sub>Pílula: alterna entre as fontes</sub></td>
+    <td align="center" rowspan="2"><img src="docs/ilha-lista.png" alt="Lista com as sete fontes" width="330"><br><sub>Mouse em cima: todas as fontes</sub></td>
+    <td align="center" rowspan="2"><img src="docs/ilha-detalhe.png" alt="Detalhe do Claude" width="330"><br><sub>Clique: o detalhe de uma fonte</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/ilha-vertical.png" alt="Cápsula vertical" width="70"><br><sub>Presa na lateral: vertical</sub></td>
+  </tr>
+</table>
+
+> As imagens usam o modo de demonstração (`CLAUDE_WIDGET_DEMO=1`), com números fictícios.
+
+## Download
+
+Baixe o instalador em **[Releases → última versão](https://github.com/giovani-junior-dev/claude-widget/releases/latest)**
+(`Claude-Widget-Setup-<versão>.exe`), rode e pronto: a ilha aparece no topo da
+tela e o ícone fica na bandeja. Quem já tem uma versão instalada recebe a
+atualização sozinho na próxima abertura.
+
+O instalador não é assinado, então o Windows SmartScreen pode avisar na primeira
+vez: **Mais informações → Executar assim mesmo**.
 
 ## Por que existe
 
@@ -76,7 +96,7 @@ Detalhes que não são óbvios:
 Nas fontes que mandam severidade (Claude), a cor de alerta vem da API. Nas
 outras, âmbar a partir de 75% e vermelho a partir de 90%.
 
-## Instalação
+## Rodar a partir do código
 
 Requisitos: Windows 10/11 64 bits, Node.js 22.12 ou mais novo. Cada fonte
 aparece sozinha quando a ferramenta correspondente estiver instalada e logada.
@@ -142,6 +162,16 @@ npm test
 npm run icons            # regenera os ícones da bandeja
 ```
 
+Modo de demonstração, com números fictícios e preferências em pasta separada
+(não toca credenciais nem rede):
+
+```powershell
+$env:CLAUDE_WIDGET_DEMO = '1'; npm start
+```
+
+Publicar uma versão: suba o `version` do `package.json`, crie a tag `v<versão>`
+e faça push dela. O GitHub Actions gera o instalador e publica o release.
+
 Estrutura:
 
 ```
@@ -157,6 +187,7 @@ lib/token-usage.js      tokens por modelo do Claude, com índice incremental
 lib/window-state.js     preferências guardadas
 lib/poll-policy.js      intervalo entre consultas e recuo em caso de falha
 lib/autostart.js        o atalho da pasta Inicializar
+lib/demo.js             dados fictícios do modo de demonstração
 test/                   fixtures com a estrutura real das APIs e as verificações
 ```
 
