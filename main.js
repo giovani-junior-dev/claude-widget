@@ -361,10 +361,14 @@ function targetDisplay () {
 //   y = topo da pilula (v=top) ou base da pilula (v=bottom)
 const INSET = 24 // folga para a sombra nos lados ancorados
 const PILL_H = 38
+const VPILL_H = 150 // altura aproximada da capsula vertical (logo, %, anel, pontos)
 const DOCK_SNAP = 90 // soltar a menos disso do topo central encaixa de volta la
 
+// orient: 'v' quando a ilha esta presa numa lateral (capsula vertical), 'h' no resto.
 function anchor () {
-  return state.dock ? { h: state.dock.h, v: state.dock.v } : { h: 'center', v: 'top' }
+  const d = state.dock
+  if (!d) return { h: 'center', v: 'top', orient: 'h' }
+  return { h: d.h, v: d.v, orient: d.edge === 'left' || d.edge === 'right' ? 'v' : 'h' }
 }
 
 function placeWindow () {
@@ -411,13 +415,33 @@ function dockFromDrop () {
   }
 
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
+  const v = cy < a.y + a.height / 2 ? 'top' : 'bottom'
+
+  // Borda mais proxima decide o formato: nas laterais a pilula vira capsula
+  // vertical colada na borda; no topo e na base continua horizontal.
+  const toLeft = cx - a.x
+  const toRight = a.x + a.width - cx
+  const toEdgeY = Math.min(cy - a.y, a.y + a.height - cy)
+  if (Math.min(toLeft, toRight) < toEdgeY) {
+    const side = toLeft < toRight ? 'left' : 'right'
+    // Topo da capsula logo acima do cursor (v=top) ou base logo abaixo (v=bottom).
+    const y = v === 'top'
+      ? clamp(cy - 20, a.y + 6, a.y + a.height - VPILL_H - 6)
+      : clamp(cy + 20, a.y + VPILL_H + 6, a.y + a.height - 6)
+    setState({
+      displayId: display.id,
+      dock: { edge: side, h: side, v, x: side === 'left' ? a.x + 6 : a.x + a.width - 6, y }
+    })
+    return
+  }
+
   const left = clamp(px, a.x + 6, a.x + a.width - pw - 6)
   const top = clamp(py, a.y + 6, a.y + a.height - PILL_H - 6)
   const h = cx < a.x + a.width / 3 ? 'left' : cx > a.x + a.width * 2 / 3 ? 'right' : 'center'
-  const v = cy < a.y + a.height / 2 ? 'top' : 'bottom'
   setState({
     displayId: display.id,
     dock: {
+      edge: v,
       h,
       v,
       x: h === 'left' ? left : h === 'right' ? left + pw : left + pw / 2,

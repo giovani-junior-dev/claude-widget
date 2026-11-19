@@ -58,6 +58,16 @@
   #island[data-h="left"] .view.on,#island[data-h="right"] .view.on{transform:scale(1)}
   #island[data-v="bottom"] .view{top:auto;bottom:0}
 
+  /* capsula vertical, presa numa lateral: logo, %, anel e pontos em coluna */
+  #island[data-o="v"][data-mode="pill"]{border-radius:23px}
+  #island[data-o="v"] #pill{width:46px;height:auto;flex-direction:column}
+  #island[data-o="v"] .slide{flex-direction:column;height:auto;gap:9px;padding:13px 0 12px}
+  #island[data-o="v"] .slide .who,#island[data-o="v"] .slide .what{display:none}
+  #island[data-o="v"] .slide .logo{width:20px;height:20px}
+  #island[data-o="v"] .slide .pct{margin:0;font-size:12px}
+  #island[data-o="v"] .slide .ring{width:24px;height:24px}
+  #island[data-o="v"] .dots{flex-direction:column;margin:2px 0 0}
+
   /* ---------------------------------------------------------- pilula */
   #pill{height:38px;display:flex;align-items:center;white-space:nowrap;cursor:pointer;width:max-content}
   .slide{display:flex;align-items:center;gap:9px;padding:0 9px 0 11px;height:38px;animation:slideIn .55s var(--spring)}

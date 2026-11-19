@@ -142,8 +142,15 @@ function statusLine (p) {
 
 // ---------------------------------------------------------------- modo e tamanho
 
+// Presa numa lateral, a pilula vira capsula vertical. Arrastando, volta a ser
+// horizontal, que e o formato que segue o cursor.
+function orient () {
+  return !dragging && last && last.anchor && last.anchor.orient === 'v' ? 'v' : 'h'
+}
+
 function sizeFor (m) {
   const v = $(m)
+  if (m === 'pill' && orient() === 'v') return { w: 46, h: Math.max(110, Math.min(260, v.scrollHeight)) }
   if (m === 'pill') return { w: Math.max(200, Math.min(340, v.scrollWidth)), h: 38 }
   return { w: v.offsetWidth, h: Math.min(v.scrollHeight, window.innerHeight - 24) }
 }
@@ -158,6 +165,7 @@ function fit () {
   const a = (last && last.anchor) || { h: 'center', v: 'top' }
   island.dataset.h = a.h
   island.dataset.v = a.v
+  island.dataset.o = orient()
   island.style.width = s.w + 'px'
   island.style.height = s.h + 'px'
   // Tamanho-alvo, nao o da animacao: o hover ja vale para onde a ilha vai chegar.
@@ -515,6 +523,7 @@ document.addEventListener('mousemove', e => {
   clearTimeout(closeTimer)
   document.body.style.cursor = 'grabbing'
   setMode('pill')
+  render() // capsula vertical volta a ser horizontal antes de seguir o cursor
   api.dragStart()
 })
 
