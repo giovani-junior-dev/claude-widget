@@ -95,13 +95,33 @@ const agModels = {
 
 test('antigravity: modelos que dividem a cota viram uma linha so', () => {
   const vm = toAntigravityViewModel(agModels, NOW)
-  assert.deepEqual(vm.windows.map(w => [w.name, w.pct]), [['Gemini', 40], ['Claude · GPT-OSS', 5]])
+  assert.deepEqual(vm.windows.map(w => [w.name, w.pct]), [['Claude · GPT-OSS · 5 h', 5], ['Gemini · 5 h', 40]])
+})
+
+test('antigravity: resumo por grupo traz semana e 5 h, e tira essas familias da cota por modelo', () => {
+  const raw = {
+    ...agModels,
+    groups: [{
+      displayName: 'Claude and GPT models',
+      buckets: [
+        { window: 'weekly', remainingFraction: 0.9, resetTime: '2026-11-26T12:46:58Z' },
+        { window: '5h', remainingFraction: 0.7, resetTime: '2026-11-19T07:46:58Z' }
+      ]
+    }]
+  }
+  const vm = toAntigravityViewModel(raw, NOW)
+  assert.deepEqual(vm.windows.map(w => [w.name, w.pct]), [
+    ['Claude · GPT · 5 h', 30],
+    ['Claude · GPT · semana', 10],
+    ['Gemini · 5 h', 40]
+  ])
+  assert.equal(vm.session.label, 'Gemini · 5 h')
 })
 
 test('antigravity: mostrador e a cota mais gasta, com contagem ate o reset', () => {
   const vm = toAntigravityViewModel(agModels, NOW)
   assert.equal(vm.session.pct, 40)
-  assert.equal(vm.session.label, 'Gemini')
+  assert.equal(vm.session.label, 'Gemini · 5 h')
   assert.equal(vm.session.countdown, '4 h 50')
 })
 
@@ -219,4 +239,44 @@ test('registro: erros viram os estados que a tela entende', () => {
   assert.equal(classify(new UsageError('TOKEN_EXPIRED', 'x')).status, 'expired')
   assert.equal(classify(new UsageError('TIMEOUT', 'x')).status, 'offline')
   assert.equal(classify(new UsageError('HTTP_ERROR', 'boom')).message, 'boom')
+})
+
+// ---------------------------------------------------------------- QwenCloud Token Plan
+
+const qc = require('../lib/qwencloud')
+
+// innerText real do painel de uso, valores da conta substituidos por exemplo.
+const panel = 'Token Plan Usage\nIndividual\nTeam\nIndividual Plan\nStandard\nLast updated 2026-11-19 02:45:33\nStatus\nActive\nRemaining days\n11 days\nExpiry date\n2026-11-30 13:00:00\nAuto-renew\nMonthly Quota\nReset time 2026-11-30 13:00:00\nRemaining\n78.2%\nPlan quota\n80,000\nUpgrade\nRenew\nCredit Pack'
+
+test('qwencloud: le plano, restante, cota e reinicio do texto do painel', () => {
+  const r = qc.parseUsageText(panel)
+  assert.equal(r.plan, 'standard')
+  assert.equal(r.status, 'Active')
+  assert.equal(r.remainingPct, 78.2)
+  assert.equal(r.quota, 80000)
+  assert.equal(r.resetsAt, new Date(2026, 10, 30, 13, 0, 0).getTime())
+})
+
+test('qwencloud: pagina de login ou carregando nao vira numero', () => {
+  assert.equal(qc.parseUsageText('Sign in to QwenCloud'), null)
+  assert.equal(qc.parseUsageText(''), null)
+  assert.equal(qc.parseUsageText(null), null)
+  assert.equal(qc.isLoggedOut('Log in to QwenCloud. You are currently not logged in.'), true)
+  assert.equal(qc.isLoggedOut(panel), false)
+})
+
+test('qwencloud: tela mostra o gasto do mes e os Credits usados', () => {
+  const now = new Date(2026, 10, 19, 3, 0).getTime()
+  const vm = qc.toQwenCloudViewModel(qc.parseUsageText(panel), now)
+  assert.equal(vm.session, null)
+  assert.equal(vm.windows[0].name, 'Mês')
+  assert.equal(vm.windows[0].pct, 22)
+  assert.equal(vm.windows[1].when, '17.440 / 80.000')
+})
+
+test('qwen: com a QwenCloud conectada, le o Token Plan em vez do disco', async () => {
+  const p = PROVIDERS.find(x => x.id === 'qwen')
+  const out = await p.load({ qwenCloud: async () => qc.parseUsageText(panel) })
+  assert.equal(out.plan, 'standard')
+  assert.equal(p.toVM(out.raw, Date.now()).windows[0].name, 'Mês')
 })

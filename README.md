@@ -73,23 +73,32 @@ uma fica sempre visível.
 | Codex | `~/.codex/auth.json` | `chatgpt.com/backend-api/wham/usage` |
 | Kimi Code | `~/.kimi-code/credentials/kimi-code.json` | `api.kimi.com/coding/v1/usages` |
 | Grok Build | `~/.grok/auth.json` | `cli-chat-proxy.grok.com/v1/billing` |
-| Antigravity | Gerenciador de Credenciais do Windows, alvo `gemini:antigravity` (gravado pelo `agy`) | `daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels` |
+| Antigravity | Gerenciador de Credenciais do Windows, alvo `gemini:antigravity` (gravado pelo `agy`) | `daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` e `:fetchAvailableModels` |
 | ZCode | `~/.zcode/v2/credentials.json`, cifrado pelo app (AES-256-GCM) | `api.z.ai/api/monitor/usage/quota/limit` |
-| Qwen Code | nenhuma: lê `~/.qwen/projects/*/chats/*.jsonl` | nenhum, é local |
+| Qwen (Token Plan da QwenCloud) | sessão do console, feita uma vez em **Conectar QwenCloud…** na bandeja | painel `home.qwencloud.com/analytics/token-plan`, lido numa janela invisível |
+| Qwen Code (Coding Plan, sem QwenCloud conectada) | nenhuma: lê `~/.qwen/projects/*/chats/*.jsonl` | nenhum, é local |
 
 Detalhes que não são óbvios:
 
-- **Antigravity** devolve a cota por modelo. Modelos que dividem a mesma cota
-  (mesma fração e mesmo reinício) viram uma linha só, como "Gemini" e
-  "Claude · GPT-OSS". O mostrador mostra a cota mais gasta.
+- **Antigravity** junta duas consultas. O resumo por grupo
+  (`retrieveUserQuotaSummary`) traz a semana e as 5 h do grupo Claude/GPT, os
+  mesmos números do `/credits` do `agy`. A cota por modelo
+  (`fetchAvailableModels`) cobre a janela de 5 h do Gemini. **A semana do Gemini e
+  a cota da Argon ficam de fora:** o `agy` busca esses números por um canal
+  interno que outro programa não alcança, e o widget prefere não inventar.
 - **ZCode** guarda o token cifrado com uma chave derivada do usuário do Windows,
   a mesma que o app usa. O widget decifra só em memória e nunca regrava o arquivo.
-- **Qwen Code** com o Coding Plan do Model Studio não tem endpoint público de
-  cota. O widget conta as requisições (`qwen-code.api_response`) no histórico
-  local, em janelas móveis de 5 h, 7 e 30 dias, contra o limite do plano: Lite
-  1.200 / 9.000 / 18.000 ou Pro 6.000 / 45.000 / 90.000. Escolha o plano no menu
-  da bandeja. É a **única fonte estimada**, e a tela avisa isso. Uso feito em
-  outra máquina não entra.
+- **Qwen (Token Plan)** não tem API pública de uso: a própria documentação da
+  QwenCloud manda olhar o console. Em **Conectar QwenCloud…**, no menu da
+  bandeja, abre uma janela com o login da QwenCloud. Você entra uma vez, e a
+  sessão fica guardada só no perfil do widget. A cada ciclo o widget abre o painel
+  de uso numa janela invisível e lê o que ele mostra: gasto do mês, Credits
+  usados sobre a cota e o reinício. Se a sessão cair, a fonte avisa para
+  reconectar. **Desconectar QwenCloud** apaga a sessão.
+- **Qwen Code sem QwenCloud conectada** usa o Coding Plan antigo do Model Studio:
+  conta as requisições (`qwen-code.api_response`) no histórico local, em janelas
+  móveis de 5 h, 7 e 30 dias, contra o limite do plano (Lite ou Pro, escolhido na
+  bandeja). É estimativa, e a tela avisa isso.
 - **Tokens por modelo** (só Claude) vêm dos transcripts locais e refletem
   apenas esta máquina.
 

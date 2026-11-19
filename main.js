@@ -11,6 +11,8 @@ const { autoUpdater } = require('electron-updater')
 const { PROVIDERS, BY_ID, classify } = require('./lib/providers')
 const { worstSeverity } = require('./lib/view-model')
 const { TIERS: QWEN_TIERS } = require('./lib/qwen-usage')
+const qwencloud = require('./lib/qwencloud')
+const { UsageError } = require('./lib/usage')
 const windowState = require('./lib/window-state')
 const autostart = require('./lib/autostart')
 const tokenUsage = require('./lib/token-usage')
@@ -85,7 +87,7 @@ async function refresh (id) {
   if (!p || r.busy || isHidden(id)) return
   r.busy = true
   try {
-    const { raw, plan } = demo.enabled() ? await demo.demoLoad(id) : await p.load({ qwenTier: state.qwenTier })
+    const { raw, plan } = demo.enabled() ? await demo.demoLoad(id) : await p.load({ qwenTier: state.qwenTier, qwenCloud: state.qwenCloud ? readQwenCloud : null })
     r.raw = raw
     r.at = Date.now()
     r.vm = p.toVM(raw, r.at)
@@ -151,6 +153,75 @@ function refreshStale () {
 function setState (patch) {
   state = { ...state, ...patch }
   windowState.save(app, state)
+}
+
+// ---------------------------------------------------------------- QwenCloud
+
+// Sessao do console guardada so no perfil do widget, separada de tudo.
+const QWEN_PARTITION = 'persist:qwencloud'
+const QWEN_LOAD_MS = 25_000
+
+// Abre o painel de uso numa janela invisivel e espera o texto com os numeros.
+// Redirecionou para login: a sessao caiu, e isso e "login expirado".
+async function readQwenCloud () {
+  const w = new BrowserWindow({
+    show: false,
+    width: 1280,
+    height: 900,
+    webPreferences: { partition: QWEN_PARTITION, contextIsolation: true, nodeIntegration: false, sandbox: true }
+  })
+  try {
+    await w.loadURL(qwencloud.USAGE_URL).catch(() => {})
+    const until = Date.now() + QWEN_LOAD_MS
+    while (Date.now() < until) {
+      if (w.isDestroyed()) break
+      const url = w.webContents.getURL()
+      if (/signin|login|account\.alibabacloud/i.test(url)) throw new UsageError('TOKEN_EXPIRED', null)
+      const text = await w.webContents.executeJavaScript('document.body ? document.body.innerText : ""', true).catch(() => '')
+      const parsed = qwencloud.parseUsageText(text)
+      if (parsed) return parsed
+      if (qwencloud.isLoggedOut(text)) throw new UsageError('TOKEN_EXPIRED', null)
+      await new Promise(r => setTimeout(r, 800))
+    }
+    throw new UsageError('TIMEOUT', 'O painel da QwenCloud não carregou a tempo.')
+  } finally {
+    if (!w.isDestroyed()) w.destroy()
+  }
+}
+
+// Janela de login: o usuario entra na propria pagina da QwenCloud. Quando o
+// painel de uso aparece, a conexao esta feita e a janela fecha sozinha.
+let qwenLoginWin = null
+function connectQwenCloud () {
+  if (qwenLoginWin && !qwenLoginWin.isDestroyed()) { qwenLoginWin.focus(); return }
+  qwenLoginWin = new BrowserWindow({
+    width: 1100,
+    height: 820,
+    title: 'Conectar QwenCloud',
+    autoHideMenuBar: true,
+    webPreferences: { partition: QWEN_PARTITION, contextIsolation: true, nodeIntegration: false, sandbox: true }
+  })
+  qwenLoginWin.loadURL(qwencloud.USAGE_URL)
+  const check = setInterval(async () => {
+    if (!qwenLoginWin || qwenLoginWin.isDestroyed()) return clearInterval(check)
+    const text = await qwenLoginWin.webContents.executeJavaScript('document.body ? document.body.innerText : ""', true).catch(() => '')
+    if (!qwencloud.parseUsageText(text)) return
+    clearInterval(check)
+    setState({ qwenCloud: true })
+    runtimes.qwen.available = true
+    runtimes.qwen.backoff = POLL_BASE_MS
+    qwenLoginWin.close()
+    refresh('qwen')
+  }, 1500)
+  qwenLoginWin.on('closed', () => { clearInterval(check); qwenLoginWin = null })
+}
+
+async function disconnectQwenCloud () {
+  const { session } = require('electron')
+  await session.fromPartition(QWEN_PARTITION).clearStorageData().catch(() => {})
+  setState({ qwenCloud: false })
+  runtimes.qwen.backoff = POLL_BASE_MS
+  refresh('qwen')
 }
 
 // ---------------------------------------------------------------- tela
@@ -330,9 +401,12 @@ function buildMenu () {
         click: item => setHidden(p.id, !item.checked)
       }))
     },
+    state.qwenCloud
+      ? { label: 'Desconectar QwenCloud', click: disconnectQwenCloud }
+      : { label: 'Conectar QwenCloud…', click: connectQwenCloud },
     {
-      label: 'Plano do Qwen',
-      visible: runtimes.qwen.available,
+      label: 'Plano do Qwen (contagem local)',
+      visible: runtimes.qwen.available && !state.qwenCloud,
       submenu: Object.keys(QWEN_TIERS).map(t => ({
         label: t === 'lite' ? 'Coding Plan Lite' : 'Coding Plan Pro',
         type: 'radio',
