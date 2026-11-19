@@ -2,247 +2,247 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'">
-<title>Consumo Claude Code</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'self'">
+<title>Consumo de IA</title>
 <style>
   :root{
-    --panel:#1B1815; --panel-hi:#241F1B; --well:#100E0C; --foot:#100E0C;
-    --line:rgba(255,240,225,.09); --line-hard:rgba(255,240,225,.16);
-    --text:#EDE6DE; --muted:#9A8F84; --faint:#6E655C;
-    --copper:#C6703C; --copper-dim:rgba(198,112,60,.22);
-    --ok:#4FA37C; --warn:#D6A03D; --crit:#CF4E42;
-    --display:"Bahnschrift","DIN Alternate","Segoe UI Semibold",system-ui,sans-serif;
+    --ink:#000;
+    --tile:#1C1C1E; --tile-hi:#2C2C2E; --hair:rgba(255,255,255,.08); --hair-hi:rgba(255,255,255,.14);
+    --text:#F5F5F7; --muted:rgba(235,235,245,.62); --faint:rgba(235,235,245,.34);
+    --track:rgba(255,255,255,.12);
+    --ok:#30D158; --warn:#FFD60A; --crit:#FF453A;
+    --spring:cubic-bezier(.3,1.25,.45,1);
+    --ease:cubic-bezier(.2,.8,.2,1);
+    --display:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
     --body:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
-    --mono:"Cascadia Mono","Consolas",ui-monospace,monospace;
   }
-  /* tons do mockup: creme quente, barra de topo mais clara que o corpo,
-     calhas em bege. Verde escuro nos medidores, cobre so nos creditos. */
-  :root[data-theme="light"]{
-    --panel:#FAF6EF; --panel-hi:#FEFCF8; --well:#EBE4D8; --foot:#F4EEE3;
-    --line:rgba(58,44,30,.12); --line-hard:rgba(58,44,30,.20);
-    --text:#2A231C; --muted:#6B6055; --faint:#9A8D7E;
-    --copper:#B4622C; --copper-dim:rgba(180,98,44,.16);
-    --ok:#2E7D5B; --warn:#9A6F16; --crit:#AF3A30;
-  }
-
   *{box-sizing:border-box}
-  html,body{margin:0;padding:0;background:transparent;overflow:hidden}
+  html,body{margin:0;padding:0;background:transparent;overflow:hidden;height:100%}
   body{
-    font-family:var(--body); font-size:15px; color:var(--text);
-    -webkit-font-smoothing:antialiased; user-select:none; cursor:default;
+    font-family:var(--body);font-size:13px;color:var(--text);
+    -webkit-font-smoothing:antialiased;user-select:none;cursor:default;
   }
-  .widget{background:var(--panel); border-radius:10px; overflow:hidden}
+  button{font:inherit;color:inherit}
+  img{display:block;-webkit-user-drag:none}
+  .num{font-family:var(--display);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 
-  .titlebar{
-    display:flex; align-items:center; gap:10px; padding:9px 10px 9px 12px;
-    background:var(--panel-hi); border-bottom:1px solid var(--line);
-    app-region:drag; -webkit-app-region:drag;
+  /* ---------------------------------------------------------- a ilha */
+  #island{
+    position:absolute;top:0;left:50%;transform:translateX(-50%);
+    width:236px;height:38px;border-radius:19px;background:var(--ink);overflow:hidden;
+    box-shadow:0 0 0 .5px var(--hair-hi) inset,0 14px 40px rgba(0,0,0,.42),0 2px 8px rgba(0,0,0,.3);
+    transition:width .55s var(--spring),height .55s var(--spring),border-radius .55s var(--spring);
   }
-  .grip{width:16px;height:10px;flex:none;background-image:radial-gradient(circle,var(--faint) 1px,transparent 1.2px);background-size:5px 5px;opacity:.85}
-  .titlebar .seg{margin-left:0;flex:none}
-  .titlebar .seg button{app-region:no-drag;-webkit-app-region:no-drag;padding:4px 7px;display:flex;align-items:center}
-  .titlebar .seg .src-icon{width:13px;height:13px;display:block}
-  .titlebar .seg button:not([aria-pressed="true"]) .src-icon{opacity:.5}
-  .who-source{display:none}
-  .who{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-right:auto;white-space:nowrap}
-  .who b{color:var(--copper);font-weight:600}
-  .ctl{
-    width:22px;height:22px;border:0;border-radius:5px;background:transparent;color:var(--faint);
-    display:grid;place-items:center;cursor:pointer;font-size:12px;line-height:1;padding:0;
-    app-region:no-drag; -webkit-app-region:no-drag; font-family:var(--body);
+  #island[data-mode="overview"],#island[data-mode="detail"]{border-radius:30px}
+  /* alerta: a borda respira em vermelho, como uma Live Activity urgente */
+  #island.alarm::after{
+    content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+    box-shadow:0 0 0 1px rgba(255,69,58,.55) inset;animation:breathe 2.4s ease-in-out infinite;
   }
-  .ctl:hover{background:rgba(128,128,128,.16);color:var(--text)}
-  .ctl:focus-visible{outline:none;box-shadow:0 0 0 2px var(--copper)}
-  .ctl[aria-pressed="true"]{color:var(--copper);background:var(--copper-dim)}
+  @keyframes breathe{50%{box-shadow:0 0 0 1px rgba(255,69,58,.15) inset}}
 
-  .banner{display:none;gap:9px;align-items:flex-start;padding:10px 14px;border-bottom:1px solid var(--line);font-size:12.5px;line-height:1.45}
-  .banner.on{display:flex}
-  .banner b{font-weight:600}
-
-  .primary{display:flex;align-items:center;gap:18px;padding:20px 18px 16px}
-  /* viewBox enquadra o arco (centro 59,79 raio 42): sem isso sobram 34px mortos no topo */
-  .gauge{position:relative;width:112px;height:68px;flex:none}
-  .gauge svg{display:block;width:112px;height:68px;overflow:visible}
-  .gauge .track{fill:none;stroke:var(--well);stroke-width:11;stroke-linecap:round}
-  .gauge .fill{fill:none;stroke-width:11;stroke-linecap:round;stroke-dasharray:132;stroke-dashoffset:132;transition:stroke-dashoffset .6s cubic-bezier(.2,.7,.2,1),stroke .3s}
-  .gauge .ticks{stroke:var(--line-hard);stroke-width:1.5}
-  /* dentro do arco: 84px de vao util, o texto nao pode cruzar o traco */
-  .readout{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:6px}
-  .num{font-family:var(--display);font-size:30px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
-  .num sub{font-size:13px;vertical-align:baseline;color:var(--muted);margin-left:1px}
-  .cap{font-family:var(--mono);font-size:8px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase;margin-top:2px;white-space:nowrap}
-
-  .meta{display:flex;flex-direction:column;gap:3px;min-width:0}
-  .label{font-family:var(--mono);font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted)}
-  .countdown{font-family:var(--display);font-size:23px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}
-  .sub{font-size:12.5px;color:var(--faint);font-variant-numeric:tabular-nums}
-
-  .rows{display:flex;flex-direction:column;gap:14px;padding:4px 18px 14px}
-  .rows:empty{display:none}
-  .row{display:flex;flex-direction:column;gap:6px}
-  .row .top{display:flex;align-items:baseline;gap:8px}
-  .row .name{font-size:13px;font-weight:600}
-  .row .when{font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.04em}
-  .row .val{margin-left:auto;font-family:var(--display);font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
-  .bar{position:relative;height:8px;border-radius:99px;background:var(--well);overflow:hidden}
-  /* escala em vez de largura: nao toca layout. O recorte arredondado vem do .bar */
-  .bar i{position:absolute;inset:0;display:block;transform-origin:left center;transform:scaleX(0);transition:transform .5s cubic-bezier(.2,.7,.2,1)}
-  .bar::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 calc(10% - 1px),var(--line-hard) calc(10% - 1px) 10%)}
-
-  .spend{margin:0 18px 14px;padding:12px 14px;border-radius:9px;background:var(--panel-hi);border:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
-  .spend.off{display:none}
-  .spend .head{display:flex;align-items:baseline;gap:8px}
-  .money{font-family:var(--display);font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;margin-left:auto}
-  .money span{color:var(--faint);font-size:12px;font-weight:400}
-
-  .foot{display:flex;align-items:center;gap:8px;width:100%;padding:8px 14px;border:0;border-top:1px solid var(--line);background:var(--foot);font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--faint);text-transform:uppercase;cursor:pointer;text-align:left}
-  .foot:hover{color:var(--text)}
-  .foot:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--copper)}
-  .dot{width:6px;height:6px;border-radius:99px;flex:none}
-  .foot .right{margin-left:auto}
-  .chev{font-size:9px;transition:transform .25s ease}
-  .foot[aria-expanded="true"] .chev{transform:rotate(180deg)}
-
-  /* aba de tokens: uma linha por modelo, barra proporcional ao maior consumo */
-  .tokens{display:none;padding:14px 18px 4px;border-top:1px solid var(--line)}
-  .tokens.on{display:block}
-  .tokens-head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
-  .tokens-head .label{align-self:baseline}
-  .seg{display:flex;margin-left:auto;border:1px solid var(--line-hard);border-radius:6px;overflow:hidden}
-  .seg button{
-    font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;
-    padding:3px 8px;border:0;background:transparent;color:var(--muted);cursor:pointer;
+  .view{
+    position:absolute;top:0;left:50%;transform:translateX(-50%) scale(.94);
+    opacity:0;filter:blur(8px);pointer-events:none;
+    transition:opacity .28s var(--ease),filter .32s var(--ease),transform .5s var(--spring);
   }
-  .seg button + button{border-left:1px solid var(--line)}
-  .seg button:hover{color:var(--text)}
-  .seg button:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--copper)}
-  .seg button[aria-pressed="true"]{background:var(--copper-dim);color:var(--copper);font-weight:600}
-  .spinner{
-    width:9px;height:9px;flex:none;border-radius:99px;
-    border:1.5px solid var(--line-hard);border-top-color:var(--copper);
-    animation:spin .7s linear infinite;
+  .view.on{opacity:1;filter:blur(0);transform:translateX(-50%) scale(1);pointer-events:auto;transition-delay:.06s}
+
+  /* ---------------------------------------------------------- pilula */
+  #pill{height:38px;display:flex;align-items:center;white-space:nowrap;cursor:pointer;width:max-content}
+  .slide{display:flex;align-items:center;gap:9px;padding:0 9px 0 11px;height:38px;animation:slideIn .55s var(--spring)}
+  @keyframes slideIn{from{opacity:0;transform:translateY(12px);filter:blur(4px)}}
+  .slide .logo{width:18px;height:18px}
+  .slide .who{font-weight:600;font-size:12.5px;letter-spacing:.01em}
+  .slide .what{font-size:12px;color:var(--muted);margin-left:2px}
+  .slide .pct{margin-left:10px;font-size:14px;font-weight:600}
+  .dots{display:flex;gap:3px;margin-left:4px}
+  .dots i{width:4px;height:4px;border-radius:99px;background:var(--faint);transition:background .3s,transform .3s}
+  .dots i.on{background:var(--text);transform:scale(1.25)}
+
+  /* anel: track + arco; o arco anima pelo dashoffset */
+  .ring{display:block;transform:rotate(-90deg);flex:none}
+  .ring circle{fill:none}
+  .ring .t{stroke:var(--track)}
+  .ring .a{stroke-linecap:round;transition:stroke-dashoffset .9s var(--ease),stroke .4s}
+
+  /* ---------------------------------------------------------- visao geral */
+  #overview{width:420px;padding:14px 10px 10px}
+  .head{display:flex;align-items:center;gap:8px;padding:2px 8px 10px}
+  .head .title{font-family:var(--display);font-size:15px;font-weight:600;letter-spacing:.01em}
+  .head .sub{font-size:11.5px;color:var(--faint)}
+  .head .sp{flex:1}
+  .icon-btn{
+    width:28px;height:28px;border:0;border-radius:99px;background:var(--tile);color:var(--muted);
+    display:grid;place-items:center;cursor:pointer;padding:0;transition:background .2s,color .2s,transform .2s var(--spring);
   }
+  .icon-btn:hover{background:var(--tile-hi);color:var(--text)}
+  .icon-btn:active{transform:scale(.9)}
+  .icon-btn:focus-visible{outline:2px solid var(--text);outline-offset:1px}
+  .icon-btn svg{width:14px;height:14px}
+  .icon-btn.spin svg{animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
-  /* com 90 dias a lista cresce; rola por dentro em vez de esticar a janela */
-  #tokens-list{max-height:326px;overflow-y:auto;overscroll-behavior:contain}
-  /* desvanece a ultima linha so quando ha mais para rolar: o corte reto parecia defeito */
-  #tokens-list.more{mask-image:linear-gradient(to bottom,#000 calc(100% - 26px),transparent)}
-  #tokens-list::-webkit-scrollbar{width:6px}
-  #tokens-list::-webkit-scrollbar-thumb{background:var(--line-hard);border-radius:99px}
-  .trow{display:flex;flex-direction:column;gap:5px;margin-bottom:11px}
-  .trow .top{display:flex;align-items:baseline;gap:8px}
-  .trow .tname{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .trow .tcalls{font-family:var(--mono);font-size:9.5px;color:var(--faint);letter-spacing:.04em;flex:none}
-  .trow .tval{margin-left:auto;font-family:var(--display);font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;flex:none}
-  .trow .bar{height:6px}
-  .trow.alien .tname{color:var(--muted);font-weight:400}
-  .tokens-note{font-size:11px;line-height:1.45;color:var(--faint);padding-bottom:8px}
-  .tokens-empty{font-size:12.5px;color:var(--muted);padding-bottom:10px}
-  body.compact .tokens,body.compact .chev{display:none}
 
-  /* modo compacto */
-  body.compact .seg{display:none}
-  body.compact .who-source{display:inline}
-  body.compact .primary{padding:14px 16px 10px;gap:14px}
-  body.compact .gauge,body.compact .gauge svg{width:68px;height:41px}
-  body.compact .num{font-size:19px}
-  body.compact .cap{display:none}
-  body.compact .readout{padding-bottom:2px}
-  body.compact .rows,body.compact .spend,body.compact #reset-at{display:none}
-  body.compact .compact-line{display:block}
-  body.compact .countdown{font-size:20px}
-  .compact-line{display:none;font-size:12px;color:var(--faint);white-space:nowrap}
+  .list{display:flex;flex-direction:column;gap:2px}
+  .card{
+    display:flex;align-items:center;gap:12px;padding:9px 10px;border-radius:18px;border:0;background:transparent;
+    width:100%;text-align:left;cursor:pointer;transition:background .2s;
+  }
+  .card:hover{background:rgba(255,255,255,.06)}
+  .card:focus-visible{outline:2px solid var(--hair-hi);outline-offset:-2px}
+  .tile{width:38px;height:38px;border-radius:11px;background:var(--tile);display:grid;place-items:center;flex:none;position:relative}
+  .tile img{width:21px;height:21px}
+  .tile .st{position:absolute;right:-2px;bottom:-2px;width:10px;height:10px;border-radius:99px;border:2px solid var(--ink);background:var(--warn)}
+  .tile .st[hidden]{display:none}
+  .card .mid{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+  .card .line1{display:flex;align-items:center;gap:7px}
+  .card .name{font-weight:600;font-size:13.5px}
+  .plan{font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--tile);padding:2px 6px;border-radius:99px}
+  .plan:empty{display:none}
+  .card .when{margin-left:auto;font-size:11.5px;color:var(--faint);white-space:nowrap}
+  .mini{display:flex;align-items:center;gap:8px}
+  .mini .bar{flex:1}
+  .mini .lbl{font-size:10.5px;color:var(--faint);width:86px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mini .v{font-size:11px;color:var(--muted);width:30px;text-align:right}
+  .gaugebox{position:relative;width:44px;height:44px;flex:none}
+  .gaugebox .v{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:600}
+  .gaugebox .v small{font-size:8px;color:var(--muted);margin-left:1px}
 
-  body.stale .num,body.stale .val,body.stale .money{color:var(--faint)}
+  .bar{position:relative;height:5px;border-radius:99px;background:var(--track);overflow:hidden}
+  .bar i{position:absolute;inset:0;transform-origin:left center;transform:scaleX(0);border-radius:99px;transition:transform .8s var(--ease),background .4s}
 
-  @media (prefers-reduced-motion: reduce){*{transition:none!important}}
+  /* ---------------------------------------------------------- detalhe */
+  #detail{width:420px;padding:14px 16px 12px}
+  #detail .head{padding:2px 0 6px}
+  .back{margin-right:2px}
+  .hero{display:flex;align-items:center;gap:18px;padding:12px 4px 16px}
+  .hero .gaugebox{width:104px;height:104px}
+  .hero .gaugebox .v{font-size:30px;font-weight:600;padding-bottom:6px}
+  .hero .gaugebox .v small{font-size:13px}
+  .hero .gaugebox .cap{position:absolute;left:0;right:0;bottom:24px;text-align:center;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 10px;font-size:8.5px;letter-spacing:.05em}
+  .hero .meta{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .eyebrow{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)}
+  .countdown{font-family:var(--display);font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1}
+  .hero .at{font-size:12px;color:var(--muted)}
+
+  .banner{display:none;gap:9px;align-items:flex-start;margin:4px 0 12px;padding:10px 12px;border-radius:14px;background:rgba(255,214,10,.1);color:#FFE58A;font-size:12px;line-height:1.45}
+  .banner.on{display:flex}
+  .banner.crit{background:rgba(255,69,58,.12);color:#FFB3AD}
+  .group{background:var(--tile);border-radius:18px;padding:12px 14px;display:flex;flex-direction:column;gap:12px;margin-bottom:10px}
+  .group:empty{display:none}
+  .row{display:flex;flex-direction:column;gap:7px}
+  .row .top{display:flex;align-items:baseline;gap:8px}
+  .row .name{font-size:12.5px;font-weight:600}
+  .row .when{font-size:11px;color:var(--faint)}
+  .row .val{margin-left:auto;font-size:14px;font-weight:600}
+  .row .bar{height:6px}
+  .money{margin-left:auto;font-size:15px;font-weight:600}
+  .money span{color:var(--faint);font-size:11.5px;font-weight:400}
+  .note{font-size:11px;line-height:1.45;color:var(--faint);padding:0 4px 6px}
+  .note:empty{display:none}
+  .foot{display:flex;align-items:center;gap:7px;padding:4px 4px 0;font-size:11px;color:var(--faint)}
+  .foot .dot{width:6px;height:6px;border-radius:99px;background:var(--ok)}
+  .foot .sp{flex:1}
+  .link{border:0;background:transparent;color:var(--muted);cursor:pointer;padding:2px 4px;border-radius:6px;font-size:11px}
+  .link:hover{color:var(--text)}
+
+  /* tokens por modelo (so Claude) */
+  .tokens[hidden]{display:none}
+  .tokens .tophead{display:flex;align-items:center;gap:8px}
+  .seg{display:flex;margin-left:auto;background:rgba(255,255,255,.06);border-radius:99px;padding:2px}
+  .seg button{border:0;background:transparent;color:var(--muted);font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:99px;cursor:pointer}
+  .seg button[aria-pressed="true"]{background:var(--tile-hi);color:var(--text)}
+  .spinner{width:10px;height:10px;border-radius:99px;border:1.5px solid var(--track);border-top-color:var(--text);animation:spin .7s linear infinite}
+  .spinner[hidden]{display:none}
+  #tokens-list{max-height:220px;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:10px;padding-right:2px}
+  #tokens-list::-webkit-scrollbar{width:5px}
+  #tokens-list::-webkit-scrollbar-thumb{background:var(--track);border-radius:99px}
+  .trow .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .trow.alien .name{color:var(--muted);font-weight:400}
+  .empty{font-size:12px;color:var(--muted)}
+
+  body.stale .val,body.stale .money,body.stale .hero .v{color:var(--muted)}
+
+  @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
-<div class="widget">
+<div id="island" data-mode="pill">
 
-  <div class="titlebar">
-    <span class="grip"></span>
-    <div class="seg" id="source-tabs" role="group" aria-label="Fonte">
-      <button type="button" data-source="claude" aria-pressed="true" title="Claude" aria-label="Claude">
-        <svg class="src-icon" viewBox="0 0 256 257" aria-hidden="true"><path fill="#D97757" d="m50.228 170.321 50.357-28.257.843-2.463-.843-1.361h-2.462l-8.426-.518-28.775-.778-24.952-1.037-24.175-1.296-6.092-1.297L0 125.796l.583-3.759 5.12-3.434 7.324.648 16.202 1.101 24.304 1.685 17.629 1.037 26.118 2.722h4.148l.583-1.685-1.426-1.037-1.101-1.037-25.147-17.045-27.22-18.017-14.258-10.37-7.713-5.25-3.888-4.925-1.685-10.758 7-7.713 9.397.649 2.398.648 9.527 7.323 20.35 15.75L94.817 91.9l3.889 3.24 1.555-1.102.195-.777-1.75-2.917-14.453-26.118-15.425-26.572-6.87-11.018-1.814-6.61c-.648-2.723-1.102-4.991-1.102-7.778l7.972-10.823L71.42 0 82.05 1.426l4.472 3.888 6.61 15.101 10.694 23.786 16.591 32.34 4.861 9.592 2.592 8.879.973 2.722h1.685v-1.556l1.36-18.211 2.528-22.36 2.463-28.776.843-8.1 4.018-9.722 7.971-5.25 6.222 2.981 5.12 7.324-.713 4.73-3.046 19.768-5.962 30.98-3.889 20.739h2.268l2.593-2.593 10.499-13.934 17.628-22.036 7.778-8.749 9.073-9.657 5.833-4.601h11.018l8.1 12.055-3.628 12.443-11.342 14.388-9.398 12.184-13.48 18.147-8.426 14.518.778 1.166 2.01-.194 30.46-6.481 16.462-2.982 19.637-3.37 8.88 4.148.971 4.213-3.5 8.62-20.998 5.184-24.628 4.926-36.682 8.685-.454.324.519.648 16.526 1.555 7.065.389h17.304l32.21 2.398 8.426 5.574 5.055 6.805-.843 5.184-12.962 6.611-17.498-4.148-40.83-9.721-14-3.5h-1.944v1.167l11.666 11.406 21.387 19.314 26.767 24.887 1.36 6.157-3.434 4.86-3.63-.518-23.526-17.693-9.073-7.972-20.545-17.304h-1.36v1.814l4.73 6.935 25.017 37.59 1.296 11.536-1.814 3.76-6.481 2.268-7.13-1.297-14.647-20.544-15.1-23.138-12.185-20.739-1.49.843-7.194 77.448-3.37 3.953-7.778 2.981-6.48-4.925-3.436-7.972 3.435-15.749 4.148-20.544 3.37-16.333 3.046-20.285 1.815-6.74-.13-.454-1.49.194-15.295 20.999-23.267 31.433-18.406 19.702-4.407 1.75-7.648-3.954.713-7.064 4.277-6.286 25.47-32.405 15.36-20.092 9.917-11.6-.065-1.686h-.583L44.07 198.125l-12.055 1.555-5.185-4.86.648-7.972 2.463-2.593 20.35-13.999-.064.065Z"/></svg>
-      </button>
-      <button type="button" data-source="codex" aria-pressed="false" hidden title="Codex" aria-label="Codex">
-        <svg class="src-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M8.086.457a6.105 6.105 0 013.046-.415c1.333.153 2.521.72 3.564 1.7a.117.117 0 00.107.029c1.408-.346 2.762-.224 4.061.366l.063.03.154.076c1.357.703 2.33 1.77 2.918 3.198.278.679.418 1.388.421 2.126a5.655 5.655 0 01-.18 1.631.167.167 0 00.04.155 5.982 5.982 0 011.578 2.891c.385 1.901-.01 3.615-1.183 5.14l-.182.22a6.063 6.063 0 01-2.934 1.851.162.162 0 00-.108.102c-.255.736-.511 1.364-.987 1.992-1.199 1.582-2.962 2.462-4.948 2.451-1.583-.008-2.986-.587-4.21-1.736a.145.145 0 00-.14-.032c-.518.167-1.04.191-1.604.185a5.924 5.924 0 01-2.595-.622 6.058 6.058 0 01-2.146-1.781c-.203-.269-.404-.522-.551-.821a7.74 7.74 0 01-.495-1.283 6.11 6.11 0 01-.017-3.064.166.166 0 00.008-.074.115.115 0 00-.037-.064 5.958 5.958 0 01-1.38-2.202 5.196 5.196 0 01-.333-1.589 6.915 6.915 0 01.188-2.132c.45-1.484 1.309-2.648 2.577-3.493.282-.188.55-.334.802-.438.286-.12.573-.22.861-.304a.129.129 0 00.087-.087A6.016 6.016 0 015.635 2.31C6.315 1.464 7.132.846 8.086.457zm-.804 7.85a.848.848 0 00-1.473.842l1.694 2.965-1.688 2.848a.849.849 0 001.46.864l1.94-3.272a.849.849 0 00.007-.854l-1.94-3.393zm5.446 6.24a.849.849 0 000 1.695h4.848a.849.849 0 000-1.696h-4.848z"/></svg>
-      </button>
-      <button type="button" data-source="kimi" aria-pressed="false" hidden title="Kimi" aria-label="Kimi">
-        <svg class="src-icon" viewBox="0 0 512 512" aria-hidden="true"><path d="M503 114.333v280c0 60.711-49.29 110-110 110H113c-60.711 0-110-49.289-110-110v-280c0-60.71 49.289-110 110-110h280c60.71 0 110 49.29 110 110z"/><path d="M342.065 189.759c1.886-2.42 3.541-4.63 5.289-6.77.81-1.007.74-1.771-.046-2.824-7.58-9.965-8.298-21.028-3.935-32.254 3.275-8.448 10.52-12.406 19.373-13.25 5.52-.521 10.936.046 15.959 2.73 6.596 3.53 10.438 8.912 11.688 16.341.995 5.926.81 11.712-.868 17.452-2.974 10.161-10.277 15.427-20.287 16.758-8.31 1.11-16.734 1.25-25.113 1.817-.648.046-1.308 0-2.06 0z" fill="#027aff"/><path d="M321.512 144.254h-50.064l-39.637 90.384h-56.036v-89.99H131v232.868h44.787v-98.103h78.973c13.598 0 26.015-7.927 31.744-20.252v118.355h44.787v-98.103c0-23.342-18.239-42.97-41.523-44.671v-.116h-24.593a45.577 45.577 0 0026.884-24.534l29.453-65.838z" fill="#fff"/></svg>
-      </button>
-      <button type="button" data-source="grok" aria-pressed="false" hidden title="Grok" aria-label="Grok">
-        <svg class="src-icon" viewBox="0 0 1024 1024" aria-hidden="true"><path fill="currentColor" d="M395.479 633.828L735.91 381.105C752.599 368.715 776.454 373.548 784.406 392.792C826.26 494.285 807.561 616.253 724.288 699.996C641.016 783.739 525.151 802.104 419.247 760.277L303.556 814.143C469.49 928.202 670.987 899.995 796.901 773.282C896.776 672.843 927.708 535.937 898.785 412.476L899.047 412.739C857.105 231.37 909.358 158.874 1016.4 10.6326C1018.93 7.11771 1021.47 3.60279 1024 0L883.144 141.651V141.212L395.392 633.916"/><path fill="currentColor" d="M325.226 695.251C206.128 580.84 226.662 403.776 328.285 301.668C403.431 226.097 526.549 195.254 634.026 240.596L749.454 186.994C728.657 171.88 702.007 155.623 671.424 144.2C533.19 86.9942 367.693 115.465 255.323 228.382C147.234 337.081 113.244 504.215 171.613 646.833C215.216 753.423 143.739 828.818 71.7385 904.916C46.2237 931.893 20.6216 958.87 0 987.429L325.139 695.339"/></svg>
-      </button>
-    </div>
-    <span class="who"><span class="who-source" id="who-source"></span><b id="plan">—</b></span>
-    <button class="ctl" id="pin" aria-pressed="true" title="Fixar sobre outras janelas">▲</button>
-    <button class="ctl" id="refresh" title="Atualizar agora">↻</button>
-    <button class="ctl" id="compact" title="Modo compacto">▢</button>
-    <button class="ctl" id="hide" title="Recolher para a bandeja">—</button>
-  </div>
+  <div class="view on" id="pill" role="button" tabindex="0" aria-label="Abrir painel de consumo"></div>
 
-  <div class="banner" id="banner">
-    <span class="dot" id="banner-dot" style="margin-top:6px"></span>
-    <span id="banner-text"></span>
-  </div>
-
-  <div class="primary">
-    <div class="gauge" title="Sessão de 5 horas">
-      <svg viewBox="10 30 98 60" aria-hidden="true">
-        <path class="track" d="M 17 79 A 42 42 0 1 1 101 79"></path>
-        <path class="fill" id="arc" d="M 17 79 A 42 42 0 1 1 101 79"></path>
-        <g class="ticks">
-          <line x1="59" y1="42" x2="59" y2="47"></line>
-          <line x1="24" y1="72" x2="27" y2="69"></line>
-          <line x1="94" y1="72" x2="91" y2="69"></line>
-        </g>
-      </svg>
-      <div class="readout">
-        <div class="num" id="session-pct">—</div>
-        <div class="cap">5 h</div>
-      </div>
-    </div>
-    <div class="meta">
-      <span class="label" id="meta-label">reinicia em</span>
-      <span class="countdown" id="countdown">—</span>
-      <span class="sub" id="reset-at"></span>
-      <span class="compact-line" id="compact-line"></span>
-    </div>
-  </div>
-
-  <div class="rows" id="rows"></div>
-
-  <div class="spend off" id="spend">
+  <div class="view" id="overview">
     <div class="head">
-      <span class="label">créditos extras</span>
-      <span class="money" id="spend-money">—</span>
+      <div>
+        <div class="title">Consumo de IA</div>
+        <div class="sub" id="ov-sub"></div>
+      </div>
+      <span class="sp"></span>
+      <button class="icon-btn" id="ov-refresh" title="Atualizar tudo" aria-label="Atualizar tudo">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></svg>
+      </button>
+      <button class="icon-btn" id="ov-hide" title="Recolher para a bandeja" aria-label="Recolher para a bandeja">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 8h8"/></svg>
+      </button>
     </div>
-    <div class="bar"><i id="spend-bar"></i></div>
+    <div class="list" id="cards"></div>
   </div>
 
-  <div class="tokens" id="tokens">
-    <div class="tokens-head">
-      <span class="label">tokens por modelo</span>
-      <span class="spinner" id="tokens-spinner" hidden></span>
-      <div class="seg" id="tokens-range" role="group" aria-label="Período">
-        <button type="button" data-days="7">7 d</button>
-        <button type="button" data-days="30">30 d</button>
-        <button type="button" data-days="90">90 d</button>
+  <div class="view" id="detail">
+    <div class="head">
+      <button class="icon-btn back" id="dt-back" title="Voltar" aria-label="Voltar">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg>
+      </button>
+      <div class="tile" style="width:30px;height:30px;border-radius:9px"><img id="dt-logo" src="assets/logos/claude.svg" alt="" style="width:17px;height:17px"></div>
+      <div class="title" id="dt-name"></div>
+      <span class="plan" id="dt-plan"></span>
+      <span class="sp"></span>
+      <button class="icon-btn" id="dt-refresh" title="Atualizar" aria-label="Atualizar">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></svg>
+      </button>
+    </div>
+
+    <div class="banner" id="dt-banner"><span id="dt-banner-text"></span></div>
+
+    <div class="hero">
+      <div class="gaugebox" id="dt-gauge">
+        <div class="v num" id="dt-pct">—</div>
+        <div class="cap" id="dt-cap"></div>
+      </div>
+      <div class="meta">
+        <span class="eyebrow" id="dt-eyebrow">reinicia em</span>
+        <span class="countdown" id="dt-countdown">—</span>
+        <span class="at" id="dt-at"></span>
       </div>
     </div>
-    <div id="tokens-list"></div>
-    <div class="tokens-note" id="tokens-note"></div>
-  </div>
 
-  <button class="foot" id="foot" aria-expanded="false" aria-controls="tokens">
-    <span class="dot" id="status-dot"></span>
-    <span id="status-text">iniciando</span>
-    <span class="right" id="ago"></span>
-    <span class="chev" id="chev">▾</span>
-  </button>
+    <div class="group" id="dt-rows"></div>
+    <div class="group" id="dt-spend" hidden></div>
+
+    <div class="group tokens" id="dt-tokens" hidden>
+      <div class="tophead">
+        <span class="eyebrow">tokens por modelo</span>
+        <span class="spinner" id="tk-spinner" hidden></span>
+        <div class="seg" id="tk-range" role="group" aria-label="Período">
+          <button type="button" data-days="7">7 d</button>
+          <button type="button" data-days="30">30 d</button>
+          <button type="button" data-days="90">90 d</button>
+        </div>
+      </div>
+      <div id="tokens-list"></div>
+      <div class="note" id="tk-note" style="padding:0"></div>
+    </div>
+
+    <div class="note" id="dt-note"></div>
+
+    <div class="foot">
+      <span class="dot" id="dt-dot"></span>
+      <span id="dt-status"></span>
+      <span class="sp"></span>
+      <button class="link" id="dt-tokens-toggle" hidden>tokens por modelo</button>
+      <span id="dt-ago"></span>
+    </div>
+  </div>
 
 </div>
 <script src="renderer.js"></script>
