@@ -148,13 +148,22 @@ function sizeFor (m) {
   return { w: v.offsetWidth, h: Math.min(v.scrollHeight, window.innerHeight - 24) }
 }
 
+// Folga ate a borda da janela nos lados ancorados (a sombra precisa de espaco).
+// Igual ao INSET do main.
+const INSET = 24
+
 function fit () {
   const s = sizeFor(mode)
   const island = $('island')
+  const a = (last && last.anchor) || { h: 'center', v: 'top' }
+  island.dataset.h = a.h
+  island.dataset.v = a.v
   island.style.width = s.w + 'px'
   island.style.height = s.h + 'px'
   // Tamanho-alvo, nao o da animacao: o hover ja vale para onde a ilha vai chegar.
-  api.reportRect({ x: Math.round((window.innerWidth - s.w) / 2), y: 0, w: s.w, h: s.h })
+  const x = a.h === 'left' ? INSET : a.h === 'right' ? window.innerWidth - INSET - s.w : (window.innerWidth - s.w) / 2
+  const y = a.v === 'bottom' ? window.innerHeight - INSET - s.h : 0
+  api.reportRect({ x: Math.round(x), y: Math.round(y), w: s.w, h: s.h })
 }
 
 function setMode (m) {
@@ -471,6 +480,8 @@ api.onState(state => {
 // Windows a janela atravessavel nao recebe mousemove).
 api.onHover(inside => {
   hovering = inside
+  if (!inside) dragLock = false
+  if (inside && dragLock) return
   if (inside) {
     clearTimeout(closeTimer)
     if (mode === 'pill') openTimer = setTimeout(() => setMode('overview'), HOVER_OPEN_MS)
@@ -479,6 +490,52 @@ api.onHover(inside => {
     closeTimer = setTimeout(() => setMode('pill'), LEAVE_CLOSE_MS)
   }
 })
+
+// ---------------------------------------------------------------- arrastar
+
+// Segurar e puxar (fora de botoes) leva a ilha para outro lugar da tela. Ela
+// encolhe para pilula, segue o cursor, e o main decide a ancoragem ao soltar.
+const DRAG_START_PX = 5
+let press = null
+let dragging = false
+let dragLock = false // depois de soltar, nao reabre so porque o mouse ficou em cima
+let swallowClick = false
+
+$('island').addEventListener('mousedown', e => {
+  if (e.button !== 0 || e.target.closest('button:not(.card), .seg, #tokens-list')) return
+  press = { x: e.screenX, y: e.screenY }
+})
+
+document.addEventListener('mousemove', e => {
+  if (!press || dragging) return
+  if (Math.hypot(e.screenX - press.x, e.screenY - press.y) < DRAG_START_PX) return
+  dragging = true
+  dragLock = true
+  clearTimeout(openTimer)
+  clearTimeout(closeTimer)
+  document.body.style.cursor = 'grabbing'
+  setMode('pill')
+  api.dragStart()
+})
+
+function drop () {
+  press = null
+  if (!dragging) return
+  dragging = false
+  swallowClick = true
+  document.body.style.cursor = ''
+  api.dragEnd()
+}
+document.addEventListener('mouseup', drop)
+window.addEventListener('blur', drop)
+
+// O clique que encerra um arrasto nao pode abrir card nem pilula.
+document.addEventListener('click', e => {
+  if (!swallowClick) return
+  swallowClick = false
+  e.stopPropagation()
+  e.preventDefault()
+}, true)
 
 $('pill').addEventListener('click', () => { clearTimeout(openTimer); setMode('overview') })
 $('pill').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') setMode('overview') })

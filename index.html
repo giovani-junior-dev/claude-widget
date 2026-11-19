@@ -48,6 +48,16 @@
   }
   .view.on{opacity:1;filter:blur(0);transform:translateX(-50%) scale(1);pointer-events:auto;transition-delay:.06s}
 
+  /* ancoragem depois de arrastar: a ilha cresce a partir do lado preso,
+     sempre para dentro da tela. 24px = INSET do main, folga da sombra. */
+  #island[data-h="left"]{left:24px;transform:none}
+  #island[data-h="right"]{left:auto;right:24px;transform:none}
+  #island[data-v="bottom"]{top:auto;bottom:24px}
+  #island[data-h="left"] .view{left:0;transform:scale(.94);transform-origin:left top}
+  #island[data-h="right"] .view{left:auto;right:0;transform:scale(.94);transform-origin:right top}
+  #island[data-h="left"] .view.on,#island[data-h="right"] .view.on{transform:scale(1)}
+  #island[data-v="bottom"] .view{top:auto;bottom:0}
+
   /* ---------------------------------------------------------- pilula */
   #pill{height:38px;display:flex;align-items:center;white-space:nowrap;cursor:pointer;width:max-content}
   .slide{display:flex;align-items:center;gap:9px;padding:0 9px 0 11px;height:38px;animation:slideIn .55s var(--spring)}

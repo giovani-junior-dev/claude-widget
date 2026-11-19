@@ -78,7 +78,7 @@ function loadCache (p) {
 async function refresh (id) {
   const p = BY_ID[id]
   const r = runtimes[id]
-  if (!p || r.busy) return
+  if (!p || r.busy || isHidden(id)) return
   r.busy = true
   try {
     const { raw, plan } = await p.load({ qwenTier: state.qwenTier })
@@ -119,7 +119,7 @@ async function refresh (id) {
 function schedule (id) {
   const r = runtimes[id]
   clearTimeout(r.timer)
-  if (!r.available) return
+  if (!r.available || isHidden(id)) return
   // Janela escondida com icone estatico: nada muda na tela, nao ha o que buscar.
   if (win && !win.isVisible() && r.status === 'ok') return
   r.timer = setTimeout(() => refresh(id), r.backoff)
@@ -128,7 +128,7 @@ function schedule (id) {
 function refreshAll ({ force = false } = {}) {
   for (const p of PROVIDERS) {
     const r = runtimes[p.id]
-    if (!r.available && !force) continue
+    if ((!r.available && !force) || isHidden(p.id)) continue
     if (force) r.backoff = POLL_BASE_MS
     refresh(p.id)
   }
@@ -138,7 +138,7 @@ function refreshAll ({ force = false } = {}) {
 function refreshStale () {
   for (const p of PROVIDERS) {
     const r = runtimes[p.id]
-    if (!r.available) continue
+    if (!r.available || isHidden(p.id)) continue
     if (r.status !== 'ok' || Date.now() - (r.at || 0) > POLL_BASE_MS) refresh(p.id)
     else schedule(p.id)
   }
@@ -156,7 +156,7 @@ function snapshot (p) {
   return {
     id: p.id,
     label: p.label,
-    available: p.required || r.available,
+    available: isShown(p),
     status: r.status,
     message: r.message,
     hint: p.hint,
@@ -173,6 +173,7 @@ function push () {
     win.webContents.send('state', {
       providers: PROVIDERS.map(snapshot),
       source: state.source,
+      anchor: anchor(),
       tokensOpen: state.tokensOpen,
       tokens: tokens.data,
       tokenDays: state.tokenDays,
@@ -227,8 +228,31 @@ function trayIcon (severity) {
   return img.isEmpty() ? nativeImage.createEmpty() : img
 }
 
+function isHidden (id) {
+  return Array.isArray(state.hidden) && state.hidden.includes(id)
+}
+
+function isShown (p) {
+  return (p.required || runtimes[p.id].available) && !isHidden(p.id)
+}
+
 function visibleProviders () {
-  return PROVIDERS.filter(p => p.required || runtimes[p.id].available)
+  return PROVIDERS.filter(isShown)
+}
+
+function setHidden (id, hidden) {
+  const list = new Set(state.hidden || [])
+  if (hidden) list.add(id)
+  else list.delete(id)
+  setState({ hidden: [...list] })
+  const r = runtimes[id]
+  if (hidden) {
+    clearTimeout(r.timer)
+  } else {
+    r.backoff = POLL_BASE_MS
+    refresh(id)
+  }
+  push()
 }
 
 function trayTooltip () {
@@ -286,7 +310,20 @@ function buildMenu () {
         label: `Tela ${i + 1}${d.id === screen.getPrimaryDisplay().id ? ' (principal)' : ''} · ${d.size.width}×${d.size.height}`,
         type: 'radio',
         checked: d.id === current.id,
-        click: () => { setState({ displayId: d.id }); placeWindow() }
+        click: () => { setState({ displayId: d.id, dock: null }); placeWindow() }
+      }))
+    },
+    { label: 'Voltar ao topo', enabled: !!state.dock, click: () => { setState({ dock: null }); placeWindow() } },
+    {
+      // So aparecem as ferramentas instaladas; desmarcar some da ilha e para de consultar.
+      label: 'Fontes',
+      submenu: PROVIDERS.filter(p => p.required || runtimes[p.id].available).map(p => ({
+        label: p.label,
+        type: 'checkbox',
+        checked: !isHidden(p.id),
+        // Ao menos uma fonte fica: ilha vazia nao tem o que mostrar.
+        enabled: isHidden(p.id) || visibleProviders().length > 1,
+        click: item => setHidden(p.id, !item.checked)
       }))
     },
     {
@@ -316,11 +353,97 @@ function targetDisplay () {
   return screen.getAllDisplays().find(d => d.id === state.displayId) || screen.getPrimaryDisplay()
 }
 
-// Centro do topo da area util, como a ilha do iPhone.
+// Onde a ilha mora. Sem "dock" salvo: centro do topo, como a do iPhone.
+// Com dock: um ponto de ancoragem e os lados para onde ela cresce, sempre para
+// dentro da tela (perto da base ela expande para cima, perto da direita para a esquerda).
+//   dock = { h: 'left'|'center'|'right', v: 'top'|'bottom', x, y }
+//   x = borda esquerda / centro / borda direita da pilula, conforme h
+//   y = topo da pilula (v=top) ou base da pilula (v=bottom)
+const INSET = 24 // folga para a sombra nos lados ancorados
+const PILL_H = 38
+const DOCK_SNAP = 90 // soltar a menos disso do topo central encaixa de volta la
+
+function anchor () {
+  return state.dock ? { h: state.dock.h, v: state.dock.v } : { h: 'center', v: 'top' }
+}
+
 function placeWindow () {
   if (!win) return
+  // Monitor do dock foi desplugado: volta ao topo do principal em vez de sumir.
+  if (state.dock && !screen.getAllDisplays().some(x => x.id === state.displayId)) setState({ dock: null })
   const a = targetDisplay().workArea
-  win.setBounds({ x: Math.round(a.x + (a.width - WIN_W) / 2), y: a.y + TOP_GAP, width: WIN_W, height: Math.min(WIN_H, a.height - TOP_GAP) })
+  const d = state.dock
+  let x, y, h
+  if (!d) {
+    x = a.x + (a.width - WIN_W) / 2
+    y = a.y + TOP_GAP
+    h = Math.min(WIN_H, a.height - TOP_GAP)
+  } else {
+    x = d.h === 'left' ? d.x - INSET : d.h === 'right' ? d.x + INSET - WIN_W : d.x - WIN_W / 2
+    if (d.v === 'top') {
+      h = Math.min(WIN_H, a.y + a.height - d.y)
+      y = d.y
+    } else {
+      h = Math.min(WIN_H, d.y + INSET - a.y)
+      y = d.y + INSET - h
+    }
+  }
+  win.setBounds({ x: Math.round(x), y: Math.round(y), width: WIN_W, height: Math.round(h) })
+  push()
+}
+
+// Converte onde a pilula foi solta em um dock, escolhendo os lados pelo terco
+// horizontal e pela metade vertical da tela.
+function dockFromDrop () {
+  if (!islandRect) return
+  const b = win.getBounds()
+  const px = b.x + islandRect.x
+  const py = b.y + islandRect.y
+  const pw = islandRect.w
+  const cx = px + pw / 2
+  const cy = py + PILL_H / 2
+  const display = screen.getDisplayNearestPoint({ x: Math.round(cx), y: Math.round(cy) })
+  const a = display.workArea
+
+  if (Math.abs(cx - (a.x + a.width / 2)) < DOCK_SNAP && py - a.y < DOCK_SNAP) {
+    setState({ dock: null, displayId: display.id })
+    return
+  }
+
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
+  const left = clamp(px, a.x + 6, a.x + a.width - pw - 6)
+  const top = clamp(py, a.y + 6, a.y + a.height - PILL_H - 6)
+  const h = cx < a.x + a.width / 3 ? 'left' : cx > a.x + a.width * 2 / 3 ? 'right' : 'center'
+  const v = cy < a.y + a.height / 2 ? 'top' : 'bottom'
+  setState({
+    displayId: display.id,
+    dock: {
+      h,
+      v,
+      x: h === 'left' ? left : h === 'right' ? left + pw : left + pw / 2,
+      y: v === 'top' ? top : top + PILL_H
+    }
+  })
+}
+
+// Arrasto: a pilula segue o cursor pelo centro ate o renderer avisar que soltou.
+let dragTimer = null
+function startDrag () {
+  if (!win || dragTimer) return
+  dragTimer = setInterval(() => {
+    if (!win || win.isDestroyed() || !islandRect) return
+    const c = screen.getCursorScreenPoint()
+    win.setPosition(Math.round(c.x - islandRect.x - islandRect.w / 2), Math.round(c.y - islandRect.y - PILL_H / 2))
+  }, 16)
+}
+
+function endDrag () {
+  if (!dragTimer) return
+  clearInterval(dragTimer)
+  dragTimer = null
+  hoverInside = true // o cursor esta sobre a pilula que acabou de soltar
+  dockFromDrop()
+  placeWindow()
 }
 
 function toggleWindow () {
@@ -388,6 +511,9 @@ ipcMain.on('refresh', (_e, id) => {
   }
 })
 
+ipcMain.on('drag-start', startDrag)
+ipcMain.on('drag-end', endDrag)
+
 ipcMain.on('hide', () => { if (win) { win.hide(); updateTray() } })
 
 // O renderer informa onde a ilha esta dentro da janela, a cada mudanca de tamanho.
@@ -402,6 +528,8 @@ ipcMain.on('island-rect', (_e, r) => {
 let hoverInside = false
 function pollHover () {
   if (!win || win.isDestroyed() || !win.isVisible() || !islandRect) return
+  // Arrastando: a captura fica ligada, senao um puxao rapido solta o mouseup em outra janela.
+  if (dragTimer) return
   const c = screen.getCursorScreenPoint()
   const b = win.getBounds()
   const PAD = 2
@@ -415,7 +543,7 @@ function pollHover () {
 
 ipcMain.on('set-source', (_e, source) => {
   const p = BY_ID[source]
-  if (!p || (!p.required && !runtimes[source].available) || source === state.source) return
+  if (!p || !isShown(p) || source === state.source) return
   setState({ source })
   push()
   // Fonte que ainda nao tem dado nenhum: busca na hora, sem esperar o ciclo.

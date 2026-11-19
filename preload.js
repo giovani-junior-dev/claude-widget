@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('claudeWidget', {
   hide: () => ipcRenderer.send('hide'),
   onHover: cb => ipcRenderer.on('hover', (_e, inside) => cb(inside)),
   reportRect: r => ipcRenderer.send('island-rect', r),
+  dragStart: () => ipcRenderer.send('drag-start'),
+  dragEnd: () => ipcRenderer.send('drag-end'),
   toggleTokens: () => ipcRenderer.send('toggle-tokens'),
   setTokenDays: days => ipcRenderer.send('set-token-days', days),
   setSource: source => ipcRenderer.send('set-source', source)
