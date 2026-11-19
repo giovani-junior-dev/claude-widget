@@ -15,6 +15,10 @@ const windowState = require('./lib/window-state')
 const autostart = require('./lib/autostart')
 const tokenUsage = require('./lib/token-usage')
 const { nextBackoff, BASE_MS: POLL_BASE_MS } = require('./lib/poll-policy')
+const demo = require('./lib/demo')
+
+// Demonstracao: preferencias e cache em pasta propria, para nao sujar os de verdade.
+if (demo.enabled()) app.setPath('userData', path.join(app.getPath('temp'), 'claude-widget-demo'))
 
 // A aba de tokens le arquivos do disco, nao a API: ritmo proprio, e so quando aberta.
 const TOKENS_REFRESH_MS = 60_000
@@ -81,7 +85,7 @@ async function refresh (id) {
   if (!p || r.busy || isHidden(id)) return
   r.busy = true
   try {
-    const { raw, plan } = await p.load({ qwenTier: state.qwenTier })
+    const { raw, plan } = demo.enabled() ? await demo.demoLoad(id) : await p.load({ qwenTier: state.qwenTier })
     r.raw = raw
     r.at = Date.now()
     r.vm = p.toVM(raw, r.at)
