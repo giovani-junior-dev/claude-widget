@@ -73,16 +73,19 @@ uma fica sempre visível.
 | Codex | `~/.codex/auth.json` | `chatgpt.com/backend-api/wham/usage` |
 | Kimi Code | `~/.kimi-code/credentials/kimi-code.json` | `api.kimi.com/coding/v1/usages` |
 | Grok Build | `~/.grok/auth.json` | `cli-chat-proxy.grok.com/v1/billing` |
-| Antigravity | Gerenciador de Credenciais do Windows, alvo `gemini:antigravity` (gravado pelo `agy`) | `daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels` |
+| Antigravity | Gerenciador de Credenciais do Windows, alvo `gemini:antigravity` (gravado pelo `agy`) | `daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` e `:fetchAvailableModels` |
 | ZCode | `~/.zcode/v2/credentials.json`, cifrado pelo app (AES-256-GCM) | `api.z.ai/api/monitor/usage/quota/limit` |
 | Qwen (Token Plan da QwenCloud) | sessão do console, feita uma vez em **Conectar QwenCloud…** na bandeja | painel `home.qwencloud.com/analytics/token-plan`, lido numa janela invisível |
 | Qwen Code (Coding Plan, sem QwenCloud conectada) | nenhuma: lê `~/.qwen/projects/*/chats/*.jsonl` | nenhum, é local |
 
 Detalhes que não são óbvios:
 
-- **Antigravity** devolve a cota por modelo. Modelos que dividem a mesma cota
-  (mesma fração e mesmo reinício) viram uma linha só, como "Gemini" e
-  "Claude · GPT-OSS". O mostrador mostra a cota mais gasta.
+- **Antigravity** junta duas consultas. O resumo por grupo
+  (`retrieveUserQuotaSummary`) traz a semana e as 5 h do grupo Claude/GPT, os
+  mesmos números do `/credits` do `agy`. A cota por modelo
+  (`fetchAvailableModels`) cobre a janela de 5 h do Gemini. **A semana do Gemini e
+  a cota da Argon ficam de fora:** o `agy` busca esses números por um canal
+  interno que outro programa não alcança, e o widget prefere não inventar.
 - **ZCode** guarda o token cifrado com uma chave derivada do usuário do Windows,
   a mesma que o app usa. O widget decifra só em memória e nunca regrava o arquivo.
 - **Qwen (Token Plan)** não tem API pública de uso: a própria documentação da
