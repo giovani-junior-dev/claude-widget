@@ -220,3 +220,43 @@ test('registro: erros viram os estados que a tela entende', () => {
   assert.equal(classify(new UsageError('TIMEOUT', 'x')).status, 'offline')
   assert.equal(classify(new UsageError('HTTP_ERROR', 'boom')).message, 'boom')
 })
+
+// ---------------------------------------------------------------- QwenCloud Token Plan
+
+const qc = require('../lib/qwencloud')
+
+// innerText real do painel de uso, valores da conta substituidos por exemplo.
+const panel = 'Token Plan Usage\nIndividual\nTeam\nIndividual Plan\nStandard\nLast updated 2026-11-19 02:45:33\nStatus\nActive\nRemaining days\n11 days\nExpiry date\n2026-11-30 13:00:00\nAuto-renew\nMonthly Quota\nReset time 2026-11-30 13:00:00\nRemaining\n78.2%\nPlan quota\n80,000\nUpgrade\nRenew\nCredit Pack'
+
+test('qwencloud: le plano, restante, cota e reinicio do texto do painel', () => {
+  const r = qc.parseUsageText(panel)
+  assert.equal(r.plan, 'standard')
+  assert.equal(r.status, 'Active')
+  assert.equal(r.remainingPct, 78.2)
+  assert.equal(r.quota, 80000)
+  assert.equal(r.resetsAt, new Date(2026, 10, 30, 13, 0, 0).getTime())
+})
+
+test('qwencloud: pagina de login ou carregando nao vira numero', () => {
+  assert.equal(qc.parseUsageText('Sign in to QwenCloud'), null)
+  assert.equal(qc.parseUsageText(''), null)
+  assert.equal(qc.parseUsageText(null), null)
+  assert.equal(qc.isLoggedOut('Log in to QwenCloud. You are currently not logged in.'), true)
+  assert.equal(qc.isLoggedOut(panel), false)
+})
+
+test('qwencloud: tela mostra o gasto do mes e os Credits usados', () => {
+  const now = new Date(2026, 10, 19, 3, 0).getTime()
+  const vm = qc.toQwenCloudViewModel(qc.parseUsageText(panel), now)
+  assert.equal(vm.session, null)
+  assert.equal(vm.windows[0].name, 'Mês')
+  assert.equal(vm.windows[0].pct, 22)
+  assert.equal(vm.windows[1].when, '17.440 / 80.000')
+})
+
+test('qwen: com a QwenCloud conectada, le o Token Plan em vez do disco', async () => {
+  const p = PROVIDERS.find(x => x.id === 'qwen')
+  const out = await p.load({ qwenCloud: async () => qc.parseUsageText(panel) })
+  assert.equal(out.plan, 'standard')
+  assert.equal(p.toVM(out.raw, Date.now()).windows[0].name, 'Mês')
+})
