@@ -2,7 +2,7 @@
 
 Uma "ilha dinâmica" para Windows, no estilo do iPhone, que mostra quanto você
 já gastou de cada ferramenta de IA de código: **Claude Code, Codex, Kimi Code,
-Grok Build, Google Antigravity, ZCode (Z.ai) e Qwen Code**.
+Grok Build, Google Antigravity, ZCode (Z.ai), OpenCode Go e Qwen**.
 
 Fica como uma pílula preta no centro do topo da tela, alternando entre as fontes
 como uma Live Activity. Passe o mouse e ela se expande numa lista com todas as
@@ -75,6 +75,7 @@ uma fica sempre visível.
 | Grok Build | `~/.grok/auth.json` | `cli-chat-proxy.grok.com/v1/billing` |
 | Antigravity | Gerenciador de Credenciais do Windows, alvo `gemini:antigravity` (gravado pelo `agy`) | `daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` e `:fetchAvailableModels` |
 | ZCode | `~/.zcode/v2/credentials.json`, cifrado pelo app (AES-256-GCM) | `api.z.ai/api/monitor/usage/quota/limit` |
+| OpenCode Go | `~/.local/share/opencode/auth.json`, entrada `opencode-go` | `opencode.ai/zen/go/v1/usage` |
 | Qwen (Token Plan da QwenCloud) | sessão do console, feita uma vez em **Conectar QwenCloud…** na bandeja | painel `home.qwencloud.com/analytics/token-plan`, lido numa janela invisível |
 | Qwen Code (Coding Plan, sem QwenCloud conectada) | nenhuma: lê `~/.qwen/projects/*/chats/*.jsonl` | nenhum, é local |
 
@@ -86,6 +87,9 @@ Detalhes que não são óbvios:
   (`fetchAvailableModels`) cobre a janela de 5 h do Gemini. **A semana do Gemini e
   a cota da Argon ficam de fora:** o `agy` busca esses números por um canal
   interno que outro programa não alcança, e o widget prefere não inventar.
+- **OpenCode Go** devolve as três janelas do plano já calculadas: 5 h móveis,
+  semana (reinicia segunda, 00:00 UTC) e mês (reinicia com o período pago). O
+  widget usa a chave do plano Go que o próprio OpenCode guardou no login.
 - **ZCode** guarda o token cifrado com uma chave derivada do usuário do Windows,
   a mesma que o app usa. O widget decifra só em memória e nunca regrava o arquivo.
 - **Qwen (Token Plan)** não tem API pública de uso: a própria documentação da
