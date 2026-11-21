@@ -16,7 +16,8 @@ const META = {
   grok: { accent: '#E5E5EA' },
   antigravity: { accent: '#4C8DFF' },
   zcode: { accent: '#E5E5EA' },
-  qwen: { accent: '#7B6CFF' }
+  qwen: { accent: '#7B6CFF' },
+  opencode: { accent: '#E5E5EA' }
 }
 const SEV = { ok: 'var(--ok)', warn: 'var(--warn)', crit: 'var(--crit)' }
 const logo = id => `assets/logos/${id}.svg`

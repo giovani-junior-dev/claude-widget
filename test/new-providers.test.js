@@ -225,8 +225,8 @@ const { PROVIDERS, classify } = require('../lib/providers')
 const { CredsError } = require('../lib/creds')
 const { UsageError } = require('../lib/usage')
 
-test('registro: sete fontes, cada uma com cache proprio e logo no disco', () => {
-  assert.deepEqual(PROVIDERS.map(p => p.id), ['claude', 'codex', 'kimi', 'grok', 'antigravity', 'zcode', 'qwen'])
+test('registro: oito fontes, cada uma com cache proprio e logo no disco', () => {
+  assert.deepEqual(PROVIDERS.map(p => p.id), ['claude', 'codex', 'kimi', 'grok', 'antigravity', 'zcode', 'opencode', 'qwen'])
   assert.equal(new Set(PROVIDERS.map(p => p.cacheFile)).size, PROVIDERS.length)
   for (const p of PROVIDERS) {
     assert.ok(fs.existsSync(path.join(__dirname, '..', 'assets', 'logos', `${p.id}.svg`)), p.id)
@@ -279,4 +279,44 @@ test('qwen: com a QwenCloud conectada, le o Token Plan em vez do disco', async (
   const out = await p.load({ qwenCloud: async () => qc.parseUsageText(panel) })
   assert.equal(out.plan, 'standard')
   assert.equal(p.toVM(out.raw, Date.now()).windows[0].name, 'Mês')
+})
+
+// ---------------------------------------------------------------- OpenCode Go
+
+const oc = require('../lib/opencode')
+
+// Estrutura real de /zen/go/v1/usage, valores de exemplo.
+const goUsage = {
+  usage: {
+    rolling: { status: 'ok', percent: 1, resetsAt: '2026-11-19T07:16:31.000Z' },
+    weekly: { status: 'ok', percent: 10, resetsAt: '2026-11-23T00:00:00.000Z' },
+    monthly: { status: 'ok', percent: 5, resetsAt: '2026-12-09T16:41:43.000Z' }
+  }
+}
+
+test('opencode: janela de 5 h vira o mostrador; semana e mes viram linhas', () => {
+  const vm = oc.toOpencodeViewModel(goUsage, NOW)
+  assert.equal(vm.session.pct, 1)
+  assert.equal(vm.session.label, '5 h')
+  assert.equal(vm.session.countdown, '2 h 46')
+  assert.deepEqual(vm.windows.map(w => [w.name, w.pct]), [['Semana', 10], ['Mês', 5]])
+})
+
+test('opencode: janela bloqueada fica vermelha mesmo com percentual baixo', () => {
+  const raw = structuredClone(goUsage)
+  raw.usage.weekly.status = 'limited'
+  assert.equal(oc.toOpencodeViewModel(raw, NOW).windows[0].severity, 'crit')
+})
+
+test('opencode: resposta vazia ou estranha nao derruba a conversao', () => {
+  for (const raw of [null, {}, { usage: 'x' }, { usage: { rolling: { percent: 'x' } } }]) {
+    assert.deepEqual(oc.toOpencodeViewModel(raw, NOW).windows, [])
+  }
+})
+
+test('opencode: le a chave do Go no auth.json e ignora os outros provedores', () => {
+  const text = JSON.stringify({ openrouter: { type: 'api', key: 'a' }, 'opencode-go': { type: 'api', key: 'go-key' } })
+  assert.equal(oc.parseAuth(text).token, 'go-key')
+  assert.throws(() => oc.parseAuth('{"openrouter":{"key":"a"}}'), err => err.code === 'NO_FILE')
+  assert.throws(() => oc.parseAuth('nao-json'), err => err.code === 'BAD_JSON')
 })
