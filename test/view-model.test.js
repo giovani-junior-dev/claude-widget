@@ -333,6 +333,18 @@ test('codex: sem janela curta, mostrador fica vazio mas a semana continua', () =
   assert.equal(vm.windows[0].pct, 11)
 })
 
+test('codex: janelas na ordem nova (5 h em primary) nao se invertem', () => {
+  const nova = structuredClone(codexFixture)
+  const { primary_window: semana, secondary_window: curta } = nova.rate_limit
+  nova.rate_limit.primary_window = curta
+  nova.rate_limit.secondary_window = semana
+  const vm = toCodexViewModel(nova, CODEX_NOW)
+  assert.equal(vm.session.pct, 43)
+  assert.equal(vm.session.countdown, '23 min')
+  assert.equal(vm.windows[0].name, 'Semana')
+  assert.equal(vm.windows[0].pct, 11)
+})
+
 test('codex: resposta sem rate_limit nao derruba a conversao', () => {
   for (const bad of [null, undefined, {}, { rate_limit: null }]) {
     const vm = toCodexViewModel(bad, CODEX_NOW)
